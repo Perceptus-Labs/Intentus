@@ -20,7 +20,6 @@ def create_llm_engine(config: Union[str, CoreConfig]) -> Any:
         return OpenAIEngine(
             model=config.llm_engine,
             temperature=config.temperature,
-            max_tokens=config.max_tokens,
             model_params=config.model_params,
         )
     elif config.llm_engine == "vllm":
@@ -29,7 +28,6 @@ def create_llm_engine(config: Union[str, CoreConfig]) -> Any:
         return VLLMEngine(
             model=config.llm_engine,
             temperature=config.temperature,
-            max_tokens=config.max_tokens,
             model_params=config.model_params,
         )
     else:
@@ -54,7 +52,6 @@ class MockLLMEngine:
         response = await self.client.chat.completions.create(
             model=self.config.llm_engine,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=self.config.max_tokens,
             temperature=self.config.temperature,
         )
         return response.choices[0].message.content
@@ -64,7 +61,6 @@ class MockLLMEngine:
         response = await self.client.chat.completions.create(
             model=self.config.engine,
             messages=[{"role": "user", "content": text}],
-            max_tokens=self.config.max_tokens,
             temperature=self.config.temperature,
         )
         return response.choices[0].message.content
@@ -89,7 +85,6 @@ class MockLLMEngine:
             response = await self.client.beta.chat.completions.parse(
                 model=self.config.engine,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=self.config.max_tokens,
                 temperature=self.config.temperature,
                 response_format=response_format,
             )
@@ -97,7 +92,6 @@ class MockLLMEngine:
             response = await self.client.chat.completions.create(
                 model=self.config.engine,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=self.config.max_tokens,
                 temperature=self.config.temperature,
                 response_format=response_format,
             )

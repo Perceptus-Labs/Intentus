@@ -137,7 +137,6 @@ class ChatAnthropic(EngineLM, CachedEngine):
         content: List[Union[str, bytes]],
         system_prompt=None,
         temperature=0,
-        max_tokens=4000,
         top_p=0.99,
         **kwargs,
     ):

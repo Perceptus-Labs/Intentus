@@ -11,7 +11,6 @@ async def main():
         verbose=True,
         max_steps=5,
         temperature=0.7,
-        max_tokens=4000,
     )
 
     # Create agent
