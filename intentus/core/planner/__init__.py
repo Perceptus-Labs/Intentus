@@ -132,26 +132,56 @@ Please present your analysis in a clear, structured format.
     def extract_context_subgoal_and_tool(self, response: Any) -> Tuple[str, str, str]:
         """Extract context, subgoal, and tool from the response."""
         logger.debug(f"Extracting context, subgoal, and tool from response: {response}")
+        logger.debug(f"Response type: {type(response)}")
 
-        # Parse the response to extract context, subgoal, and tool
-        lines = str(response).split("\n")
-        context = ""
-        subgoal = ""
-        tool = ""
+        try:
+            # If response is already a dict, use it directly
+            if isinstance(response, dict):
+                data = response
+            else:
+                # Try to parse as JSON
+                import json
 
-        for line in lines:
-            if line.startswith("Context:"):
-                context = line.replace("Context:", "").strip()
-            elif line.startswith("Sub-Goal:"):
-                subgoal = line.replace("Sub-Goal:", "").strip()
-            elif line.startswith("Tool:"):
-                tool = line.replace("Tool:", "").strip()
+                data = json.loads(str(response))
 
-        logger.debug(f"Extracted context: {context}")
-        logger.debug(f"Extracted subgoal: {subgoal}")
-        logger.debug(f"Extracted tool: {tool}")
+            logger.debug(f"Parsed data: {data}")
 
-        return context, subgoal, tool
+            # Extract values from the parsed data
+            context = data.get("context", "")
+            subgoal = data.get("sub_goal", "")
+            tool = data.get("tool_name", "")
+
+            logger.debug(f"Final extracted values:")
+            logger.debug(f"Context: '{context}'")
+            logger.debug(f"Subgoal: '{subgoal}'")
+            logger.debug(f"Tool: '{tool}'")
+
+            return context, subgoal, tool
+
+        except Exception as e:
+            logger.error(f"Error parsing response: {str(e)}")
+            # Fallback to old string parsing method
+            lines = str(response).split("\n")
+            context = ""
+            subgoal = ""
+            tool = ""
+
+            for line in lines:
+                if line.startswith("Context:"):
+                    context = line.replace("Context:", "").strip()
+                elif line.startswith("Sub-Goal:"):
+                    subgoal = line.replace("Sub-Goal:", "").strip()
+                elif line.startswith("Tool:"):
+                    tool = line.replace("Tool:", "").strip()
+                elif line.startswith("Tool Name:"):
+                    tool = line.replace("Tool Name:", "").strip()
+
+            logger.debug(f"Fallback extracted values:")
+            logger.debug(f"Context: '{context}'")
+            logger.debug(f"Subgoal: '{subgoal}'")
+            logger.debug(f"Tool: '{tool}'")
+
+            return context, subgoal, tool
 
     async def generate_next_step(
         self,
@@ -252,7 +282,19 @@ Rules:
                 },
             },
         )
-        logger.debug(f"Next step generated: {response}")
+        logger.debug(f"Raw LLM response for next step: {response}")
+        logger.debug(f"Response type: {type(response)}")
+        if isinstance(response, dict):
+            logger.debug(f"Response keys: {response.keys()}")
+            logger.debug(
+                f"Tool name from response: {response.get('tool_name', 'NOT FOUND')}"
+            )
+        else:
+            logger.debug(f"Response as string: {str(response)}")
+            # Log the exact format of the response
+            logger.debug("Response format analysis:")
+            for line in str(response).split("\n"):
+                logger.debug(f"Line: '{line}'")
 
         return response
 
