@@ -15,7 +15,7 @@ from .initializer import Initializer
 class AgentConfig:
     """Configuration for the IntentusAgent."""
 
-    llm_engine: str = "gpt-41-mini"
+    llm_engine: str = "gpt-4.1-mini"
     enabled_tools: List[str] = None
     max_steps: int = 10
     max_time: int = 300
