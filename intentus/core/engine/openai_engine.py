@@ -10,13 +10,11 @@ class OpenAIEngine:
         self,
         model: str,
         temperature: float = 0.7,
-        max_tokens: int = 4000,
         model_params: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the OpenAI engine."""
         self.model = model
         self.temperature = temperature
-        self.max_tokens = max_tokens
         self.model_params = model_params or {}
 
         # Initialize OpenAI client
@@ -36,7 +34,6 @@ class OpenAIEngine:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[message],
-                max_tokens=self.max_tokens,
                 temperature=self.temperature,
                 response_format=response_format,
                 **self.model_params,

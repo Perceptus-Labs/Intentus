@@ -10,7 +10,6 @@ class CoreConfig:
     # LLM settings
     llm_engine: str = "gpt-4.1-mini"
     temperature: float = 0.7
-    max_tokens: int = 4000
     model_params: Dict[str, Any] = field(default_factory=dict)
 
     # Tool settings

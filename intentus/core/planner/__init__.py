@@ -4,11 +4,15 @@ from PIL import Image
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 import json
+import logging
 
 from ..config import CoreConfig
 from ..engine.factory import create_llm_engine
 from ..memory import Memory
 from ..formatters import QueryAnalysis, NextStep, MemoryVerification
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 class Planner:
@@ -22,6 +26,10 @@ class Planner:
         verbose: bool = True,
     ):
         """Initialize the planner."""
+        logger.debug(f"Initializing Planner with engine: {llm_engine_name}")
+        logger.debug(f"Available tools: {available_tools}")
+        logger.debug(f"Toolbox metadata: {json.dumps(toolbox_metadata, indent=2)}")
+
         self.llm_engine = create_llm_engine(llm_engine_name)
         self.toolbox_metadata = toolbox_metadata
         self.available_tools = available_tools
@@ -33,15 +41,24 @@ class Planner:
         self.command = None
         self.final_output = None
         self.direct_output = None
+        logger.debug("Planner initialized")
 
     def get_image_info(self, image_path: str) -> Dict[str, Any]:
         """Get image information."""
+        logger.debug(f"Getting image info for: {image_path}")
         if not image_path:
+            logger.debug("No image path provided")
             return {}
+        logger.debug(f"Image path exists: {os.path.exists(image_path)}")
         return {"image_path": image_path}
 
     async def generate_base_response(self, question: str, image: str) -> str:
+        """Generate base response."""
+        logger.debug(f"Generating base response for question: {question}")
+        logger.debug(f"Image provided: {image}")
+
         image_info = self.get_image_info(image)
+        logger.debug(f"Image info: {image_info}")
 
         input_data = [question]
         if image_info and "image_path" in image_info:
@@ -49,15 +66,21 @@ class Planner:
                 with open(image_info["image_path"], "rb") as file:
                     image_bytes = file.read()
                 input_data.append(image_bytes)
+                logger.debug("Successfully read image file")
             except Exception as e:
-                print(f"Error reading image file: {str(e)}")
+                logger.error(f"Error reading image file: {str(e)}")
 
+        logger.debug("Calling LLM engine for base response")
         self.base_response = await self.llm_engine(question)
+        logger.debug(f"Base response generated: {self.base_response}")
 
         return self.base_response
 
     async def analyze_query(self, question: str, image: str) -> str:
         """Analyze the query and determine required skills."""
+        logger.debug(f"Analyzing query: {question}")
+        logger.debug(f"Image provided: {image}")
+
         prompt = f"""
 Task: Analyze the given query with accompanying inputs and determine the skills and tools needed to address it effectively.
 
@@ -78,7 +101,7 @@ Your response should include:
 
 Please present your analysis in a clear, structured format.
 """
-
+        logger.debug("Calling LLM engine for query analysis")
         response = await self.llm_engine(
             prompt,
             response_format={
@@ -101,14 +124,16 @@ Please present your analysis in a clear, structured format.
                 },
             },
         )
+        logger.debug(f"Query analysis response: {response}")
 
         self.query_analysis = response
         return str(response).strip()
 
     def extract_context_subgoal_and_tool(self, response: Any) -> Tuple[str, str, str]:
         """Extract context, subgoal, and tool from the response."""
+        logger.debug(f"Extracting context, subgoal, and tool from response: {response}")
+
         # Parse the response to extract context, subgoal, and tool
-        # This is a simplified version - you might want to make it more robust
         lines = str(response).split("\n")
         context = ""
         subgoal = ""
@@ -122,6 +147,10 @@ Please present your analysis in a clear, structured format.
             elif line.startswith("Tool:"):
                 tool = line.replace("Tool:", "").strip()
 
+        logger.debug(f"Extracted context: {context}")
+        logger.debug(f"Extracted subgoal: {subgoal}")
+        logger.debug(f"Extracted tool: {tool}")
+
         return context, subgoal, tool
 
     async def generate_next_step(
@@ -133,6 +162,11 @@ Please present your analysis in a clear, structured format.
         step_count: int,
         max_step_count: int,
     ) -> Any:
+        """Generate next step."""
+        logger.debug(f"Generating next step for question: {question}")
+        logger.debug(f"Current step: {step_count + 1} of {max_step_count}")
+        logger.debug(f"Query analysis: {query_analysis}")
+
         prompt = f"""
 Task: Determine the optimal next step to address the given query based on the provided analysis, available tools, and previous steps taken.
 
@@ -193,6 +227,7 @@ Rules:
 - The tool name MUST exactly match one from the available tools list: {self.available_tools}.
 """
 
+        logger.debug("Calling LLM engine for next step generation")
         response = await self.llm_engine(
             prompt,
             response_format={
@@ -217,15 +252,20 @@ Rules:
                 },
             },
         )
+        logger.debug(f"Next step generated: {response}")
 
         return response
 
     async def verificate_context(
         self, question: str, image: str, query_analysis: str, memory: Memory
     ) -> Any:
-        """Verify if the context is complete."""
-        prompt_verificate_context = f"""
-Task: Verify if the current context is complete and if the query has been answered.
+        """Verify context and determine if we should stop."""
+        logger.debug("Verifying context and checking stop condition")
+        logger.debug(f"Question: {question}")
+        logger.debug(f"Query analysis: {query_analysis}")
+
+        prompt = f"""
+Task: Verify if the current context and results are sufficient to answer the query.
 
 Context:
 Query: {question}
@@ -236,22 +276,25 @@ Previous Steps and Their Results:
 {memory.get_actions()}
 
 Instructions:
-1. Analyze the current context and previous steps.
-2. Determine if the query has been answered.
-3. If not, identify what is missing.
+1. Review the query and its analysis.
+2. Evaluate the results from previous steps.
+3. Determine if we have enough information to answer the query.
+4. Decide whether to continue or stop.
 
 Response Format:
 Your response MUST follow this structure:
-1. Analysis: Explain your reasoning.
+1. Analysis: Explain your reasoning in detail.
 2. Conclusion: Either "CONTINUE" or "STOP".
 
 Rules:
-- "CONTINUE" if more steps are needed.
-- "STOP" if the query has been answered.
+- If we have enough information to answer the query, conclude with "STOP".
+- If we need more information or steps, conclude with "CONTINUE".
+- Be thorough in your analysis.
 """
 
+        logger.debug("Calling LLM engine for context verification")
         response = await self.llm_engine(
-            prompt_verificate_context,
+            prompt,
             response_format={
                 "type": "json_schema",
                 "json_schema": {
@@ -267,70 +310,67 @@ Rules:
                 },
             },
         )
+        logger.debug(f"Verification response: {response}")
 
         return response
 
     def extract_conclusion(self, response: Any) -> Tuple[str, str]:
-        """Extract conclusion from the response."""
-        if isinstance(response, MemoryVerification):
-            analysis = response.analysis
-            conclusion = response.stop_signal
-        else:
-            # Parse the response to extract analysis and conclusion
-            lines = str(response).split("\n")
-            analysis = ""
-            conclusion = ""
+        """Extract analysis and conclusion from verification response."""
+        logger.debug(f"Extracting conclusion from response: {response}")
 
-            for line in lines:
-                if line.startswith("Analysis:"):
-                    analysis = line.replace("Analysis:", "").strip()
-                elif line.startswith("Conclusion:"):
-                    conclusion = line.replace("Conclusion:", "").strip()
+        # Parse the response to extract analysis and conclusion
+        lines = str(response).split("\n")
+        analysis = ""
+        conclusion = ""
+
+        for line in lines:
+            if line.startswith("Analysis:"):
+                analysis = line.replace("Analysis:", "").strip()
+            elif line.startswith("Conclusion:"):
+                conclusion = line.replace("Conclusion:", "").strip()
+
+        logger.debug(f"Extracted analysis: {analysis}")
+        logger.debug(f"Extracted conclusion: {conclusion}")
 
         return analysis, conclusion
 
     async def generate_final_output(
         self, question: str, image: str, memory: Memory
     ) -> str:
-        """Generate the final output based on the task execution results."""
-        image_info = self.get_image_info(image)
+        """Generate final output."""
+        logger.debug("Generating final output")
+        logger.debug(f"Question: {question}")
 
-        prompt_generate_final_output = f"""
-Task: Generate a comprehensive final output based on the task execution results.
+        prompt = f"""
+Task: Generate a comprehensive final answer to the query based on all previous steps and their results.
 
+Context:
 Query: {question}
-Image: {image_info}
+Image: {image}
 
 Previous Steps and Their Results:
 {memory.get_actions()}
 
 Instructions:
-1. Review the original query and any accompanying inputs.
-2. Analyze the results from all previous steps.
-3. Synthesize the information into a clear, coherent response.
-4. Ensure the response directly addresses the original query.
-5. Include relevant details and explanations where necessary.
+1. Review all previous steps and their results.
+2. Synthesize the information into a coherent answer.
+3. Ensure the answer directly addresses the query.
+4. Present the information in a clear, structured format.
 
-Your response should:
-1. Be clear and concise
-2. Directly answer the query
-3. Include relevant details from the execution results
-4. Be well-structured and easy to understand
-
-Please provide your final output in a clear, structured format.
+Response Format:
+Your response should be a well-structured answer that:
+1. Directly addresses the query
+2. Incorporates relevant information from all steps
+3. Is clear and easy to understand
+4. Provides a complete and accurate response
 """
 
-        input_data = [prompt_generate_final_output]
-        if image_info:
-            try:
-                with open(image_info["image_path"], "rb") as file:
-                    image_bytes = file.read()
-                input_data.append(image_bytes)
-            except Exception as e:
-                print(f"Error reading image file: {str(e)}")
+        logger.debug("Calling LLM engine for final output generation")
+        response = await self.llm_engine(prompt)
+        logger.debug(f"Final output generated: {response}")
 
-        final_output = await self.llm_engine(input_data)
-        return str(final_output).strip()
+        self.final_output = response
+        return response
 
     def generate_direct_output(self, question: str, image: str, memory: Memory) -> str:
         """Generate a direct output without using tools."""

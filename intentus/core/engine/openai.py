@@ -171,7 +171,6 @@ class ChatOpenAI(EngineLM, CachedEngine):
         prompt,
         system_prompt=None,
         temperature=0,
-        max_tokens=4000,
         top_p=0.99,
         response_format=None,
     ):
@@ -200,7 +199,6 @@ class ChatOpenAI(EngineLM, CachedEngine):
                 presence_penalty=0,
                 stop=None,
                 temperature=temperature,
-                max_tokens=max_tokens,
                 top_p=top_p,
                 response_format=response_format,
             )
@@ -220,7 +218,6 @@ class ChatOpenAI(EngineLM, CachedEngine):
                 presence_penalty=0,
                 stop=None,
                 temperature=temperature,
-                max_tokens=max_tokens,
                 top_p=top_p,
             )
             response = response.choices[0].message.content
@@ -233,7 +230,6 @@ class ChatOpenAI(EngineLM, CachedEngine):
                 messages=[
                     {"role": "user", "content": prompt},
                 ],
-                max_completion_tokens=max_tokens,
                 reasoning_effort="medium",
             )
             # Workaround for handling length finish reason
@@ -283,7 +279,6 @@ class ChatOpenAI(EngineLM, CachedEngine):
         content: List[Union[str, bytes]],
         system_prompt=None,
         temperature=0,
-        max_tokens=4000,
         top_p=0.99,
         response_format=None,
     ):
@@ -309,7 +304,6 @@ class ChatOpenAI(EngineLM, CachedEngine):
                     {"role": "user", "content": formatted_content},
                 ],
                 temperature=temperature,
-                max_tokens=max_tokens,
                 top_p=top_p,
                 response_format=response_format,
             )
@@ -326,7 +320,6 @@ class ChatOpenAI(EngineLM, CachedEngine):
                     {"role": "user", "content": formatted_content},
                 ],
                 temperature=temperature,
-                max_tokens=max_tokens,
                 top_p=top_p,
             )
             response_text = response.choices[0].message.content
@@ -338,7 +331,6 @@ class ChatOpenAI(EngineLM, CachedEngine):
                 messages=[
                     {"role": "user", "content": formatted_content},
                 ],
-                max_completion_tokens=max_tokens,
                 reasoning_effort="medium",
             )
             # Workaround for handling length finish reason
