@@ -1,6 +1,7 @@
 import os
-import requests
+import aiohttp
 from typing import List, Dict, Any
+from dataclasses import dataclass
 
 from intentus.tools.base import BaseTool
 
@@ -9,98 +10,107 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+@dataclass
 class Google_Search_Tool(BaseTool):
+    """Tool for performing Google searches."""
+
+    name: str = "Google_Search_Tool"
+    description: str = "A tool for performing Google searches and retrieving results"
+    version: str = "1.0.0"
+
     def __init__(self):
-        super().__init__(
-            tool_name="Google_Search_Tool",
-            tool_description="A tool that performs Google searches based on a given text query.",
-            tool_version="1.0.0",
-            input_types={
-                "query": "str - The search query to be used for the Google search.",
-                "num_results": "int - The number of search results to return (default: 10).",
-            },
-            output_type="list - A list of dictionaries containing search result information.",
-            demo_commands=[
-                {
-                    "command": 'execution = tool.execute(query="Python programming")',
-                    "description": "Perform a Google search for 'Python programming' and return the default number of results.",
-                },
-                {
-                    "command": 'execution = tool.execute(query="Machine learning tutorials", num_results=5)',
-                    "description": "Perform a Google search for 'Machine learning tutorials' and return 5 results.",
-                },
-            ],
-        )
-        # self.api_key = os.getenv("GOOGLE_API_KEY")
-        self.api_key = os.getenv(
-            "GOOGLE_API_KEY"
-        )  # NOTE: Replace with your own API key (Ref: https://developers.google.com/custom-search/v1/introduction)
-        self.cx = os.getenv(
-            "GOOGLE_CX"
-        )  # NOTE: Replace with your own custom search (Ref: https://programmablesearchengine.google.com/controlpanel/all)
+        super().__init__()
+        self.api_key = os.getenv("GOOGLE_API_KEY")
+        self.cx = os.getenv("GOOGLE_CX")
         self.base_url = "https://www.googleapis.com/customsearch/v1"
 
-    def google_search(self, query: str, num_results: int = 10) -> Dict[str, Any]:
-        """
-        Performs a Google search using the provided query.
-
-        Parameters:
-            query (str): The search query.
-            num_results (int): The number of search results to return.
-
-        Returns:
-            Dict[str, Any]: The raw search results from the Google API.
-        """
-        params = {"q": query, "key": self.api_key, "cx": self.cx, "num": num_results}
-
-        response = requests.get(self.base_url, params=params)
-        return response.json()
-
-    def execute(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
-        """
-        Executes a Google search based on the provided query.
-
-        Parameters:
-            query (str): The search query.
-            num_results (int): The number of search results to return (default: 10).
-
-        Returns:
-            List[Dict[str, Any]]: A list of dictionaries containing search result information.
-        """
-        if not self.api_key:
-            return [
-                {
-                    "error": "Google API key is not set. Please set the GOOGLE_API_KEY environment variable."
+    def get_metadata(self) -> Dict[str, Any]:
+        """Get tool metadata."""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "version": self.version,
+            "input_types": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query",
+                    "required": True,
+                },
+                "num_results": {
+                    "type": "integer",
+                    "description": "Number of results to return (default: 5)",
+                    "required": False,
+                    "default": 5,
+                },
+            },
+            "output_types": {
+                "results": {
+                    "type": "array",
+                    "description": "List of search results",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "link": {"type": "string"},
+                            "snippet": {"type": "string"},
+                        },
+                    },
                 }
-            ]
+            },
+        }
+
+    async def execute(self, command: str) -> Dict[str, Any]:
+        """Execute the Google search."""
+        if not self.api_key:
+            return {
+                "success": False,
+                "error": "Google API key is not set. Please set the GOOGLE_API_KEY environment variable.",
+                "result": None,
+            }
 
         try:
-            results = self.google_search(query, num_results)
-            print(results)
+            # Parse the command to get query and num_results
+            # For now, just use the command as the query
+            query = command
+            num_results = 5
 
-            if "items" in results:
-                return [
-                    {
-                        "title": item["title"],
-                        "link": item["link"],
-                        "snippet": item["snippet"],
-                    }
-                    for item in results["items"]
-                ]
-            else:
-                return [{"error": "No results found."}]
+            async with aiohttp.ClientSession() as session:
+                params = {
+                    "q": query,
+                    "key": self.api_key,
+                    "cx": self.cx,
+                    "num": num_results,
+                }
+                async with session.get(self.base_url, params=params) as response:
+                    results = await response.json()
+
+                    if "items" in results:
+                        return {
+                            "success": True,
+                            "error": None,
+                            "result": {
+                                "results": [
+                                    {
+                                        "title": item["title"],
+                                        "link": item["link"],
+                                        "snippet": item["snippet"],
+                                    }
+                                    for item in results["items"]
+                                ]
+                            },
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "error": "No results found.",
+                            "result": None,
+                        }
         except Exception as e:
-            return [{"error": f"An error occurred: {str(e)}"}]
-
-    def get_metadata(self):
-        """
-        Returns the metadata for the Google_Search_Tool.
-
-        Returns:
-            dict: A dictionary containing the tool's metadata.
-        """
-        metadata = super().get_metadata()
-        return metadata
+            return {
+                "success": False,
+                "error": f"An error occurred: {str(e)}",
+                "result": None,
+            }
 
 
 if __name__ == "__main__":
@@ -123,15 +133,15 @@ if __name__ == "__main__":
     # Execute the tool to perform a Google search
     query = "nobel prize winners in chemistry 2024"
     try:
-        execution = tool.execute(query=query, num_results=5)
+        execution = tool.execute(query=query)
         print("\nExecution Result:")
         print(f"Search query: {query}")
-        print(f"Number of results: {len(execution)}")
+        print(f"Number of results: {len(execution['result']['results'])}")
         print("\nSearch Results:")
-        if "error" in execution[0]:
-            print(f"Error: {execution[0]['error']}")
+        if execution["error"]:
+            print(f"Error: {execution['error']}")
         else:
-            for i, item in enumerate(execution, 1):
+            for i, item in enumerate(execution["result"]["results"], 1):
                 print(f"\n{i}. Title: {item['title']}")
                 print(f"   URL: {item['link']}")
                 print(f"   Snippet: {item['snippet']}")
