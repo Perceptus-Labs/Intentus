@@ -84,11 +84,13 @@ class Initializer:
                                 and issubclass(item, BaseTool)
                                 and item != BaseTool
                             ):
-                                print(f"Found tool class: {item_name}")
-                                tool_instance = item()
-                                metadata = tool_instance.get_metadata()
-                                tools_metadata[item_name] = metadata
-                                print(f"Metadata for {item_name}: {metadata}")
+                                # Only load enabled tools or all tools if load_all is True
+                                if self.load_all or item_name in self.enabled_tools:
+                                    print(f"Found tool class: {item_name}")
+                                    tool_instance = item()
+                                    metadata = tool_instance.get_metadata()
+                                    tools_metadata[item_name] = metadata
+                                    print(f"Metadata for {item_name}: {metadata}")
                     except Exception as e:
                         print(f"Error importing {tool_dir}: {str(e)}")
                         print("Full traceback:")
@@ -127,18 +129,11 @@ class Initializer:
                 print("Full traceback:")
                 print(traceback.format_exc())
 
-        # update the toolmetadata with the available tools
-        self.toolbox_metadata = {
-            tool: self.toolbox_metadata[tool] for tool in self.available_tools
-        }
         print("\n✅ Finished running demo commands for each tool.")
         return self.available_tools
 
     def _set_up_tools(self) -> None:
         print("\n==> Setting up tools...")
-
-        # Keep original tool names
-        self.available_tools = self.enabled_tools.copy()
 
         # Load tools and get metadata
         self.toolbox_metadata = self.load_tools_and_get_metadata()
@@ -146,10 +141,6 @@ class Initializer:
         # Run demo commands to determine available tools
         self.run_demo_commands()
 
-        # Filter toolbox_metadata to include only available tools
-        self.toolbox_metadata = {
-            tool: self.toolbox_metadata[tool] for tool in self.available_tools
-        }
         print("✅ Finished setting up tools.")
         print(f"✅ Total number of final available tools: {len(self.available_tools)}")
         print(f"✅ Final available tools: {self.available_tools}")

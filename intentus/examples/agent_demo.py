@@ -7,7 +7,7 @@ async def main():
     # Create agent configuration
     config = AgentConfig(
         llm_engine="gpt-4.1-mini",
-        enabled_tools=["Google_Search_Tool"],
+        enabled_tools=["Wikipedia_Knowledge_Searcher_Tool"],
         verbose=True,
         max_steps=5,
         temperature=0.7,
@@ -17,9 +17,7 @@ async def main():
     agent = IntentusAgent(config)
 
     # Run agent
-    result = await agent.run(
-        question="What is the current weather in New York?", image=None
-    )
+    result = await agent.run(question="What is the capital of France?", image=None)
 
     # Print results
     print("\nQuery Analysis:")
