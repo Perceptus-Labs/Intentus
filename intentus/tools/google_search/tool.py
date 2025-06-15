@@ -2,6 +2,9 @@ from typing import Dict, Any, Optional
 import os
 from dataclasses import dataclass
 from ..base import BaseTool
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 @dataclass

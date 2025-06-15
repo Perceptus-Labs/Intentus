@@ -108,10 +108,10 @@ Rules:
         """Execute a command using the specified tool."""
         # Import the tool module
         try:
-            module = __import__(
-                f"intentus.tools.{tool.lower()}.tool", fromlist=["Tool"]
-            )
-            tool_class = getattr(module, "Tool")
+            # Convert tool name to directory name (e.g., Google_Search_Tool -> google_search)
+            tool_dir = tool.lower().replace("_tool", "")
+            module = __import__(f"intentus.tools.{tool_dir}.tool", fromlist=["Tool"])
+            tool_class = getattr(module, tool)
             tool_instance = tool_class()
 
             # Execute the command
