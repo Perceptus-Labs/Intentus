@@ -23,11 +23,11 @@ Here's a basic example of how to use Intentus:
 
 ```python
 import asyncio
-from intentus.core.agent import AgentConfig, IntentusAgent
+from intentus.core.agent import CoreConfig, IntentusAgent
 
 async def main():
     # Create agent configuration
-    config = AgentConfig(
+    config = CoreConfig(
         llm_engine="gpt-4.1-mini",
         enabled_tools=["web_search", "calculator"],
         max_steps=5,

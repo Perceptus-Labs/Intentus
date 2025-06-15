@@ -1,5 +1,5 @@
-from typing import Any, List, Optional
-from ..config import LLMConfig
+from typing import Any, List, Optional, Dict, Union
+from ..config import CoreConfig
 from openai import AsyncOpenAI
 import os
 from dotenv import load_dotenv
@@ -8,26 +8,41 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def create_llm_engine(config: LLMConfig) -> Any:
-    """Create an LLM engine instance based on the configuration."""
-    model_string = config.engine.lower()
+def create_llm_engine(config: Union[str, CoreConfig]) -> Any:
+    """Create an LLM engine based on the configuration."""
+    # If config is a string, create a basic CoreConfig
+    if isinstance(config, str):
+        config = CoreConfig(llm_engine=config)
 
-    if model_string.startswith("together-"):
-        from .together import TogetherEngine
+    if config.llm_engine == "gpt-4.1-mini":
+        from .openai_engine import OpenAIEngine
 
-        return TogetherEngine(config)
-    elif model_string.startswith("vllm-"):
-        from .vllm import VLLMEngine
+        return OpenAIEngine(
+            model=config.llm_engine,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            model_params=config.model_params,
+        )
+    elif config.llm_engine == "vllm":
+        from .vllm_engine import VLLMEngine
 
-        return VLLMEngine(config)
+        return VLLMEngine(
+            model=config.llm_engine,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            model_params=config.model_params,
+        )
     else:
-        return MockLLMEngine(config)
+        raise ValueError(f"Unsupported LLM engine: {config.llm_engine}")
 
 
 class MockLLMEngine:
-    """Mock LLM engine for development purposes."""
+    """Mock LLM engine for development."""
 
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: Union[str, CoreConfig]):
+        """Initialize the mock engine."""
+        if isinstance(config, str):
+            config = CoreConfig(llm_engine=config)
         self.config = config
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -37,7 +52,7 @@ class MockLLMEngine:
     async def generate_response(self, prompt: str) -> str:
         """Generate a response from the LLM."""
         response = await self.client.chat.completions.create(
-            model=self.config.engine,
+            model=self.config.llm_engine,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=self.config.max_tokens,
             temperature=self.config.temperature,
@@ -69,12 +84,22 @@ class MockLLMEngine:
         else:
             prompt = str(input_data)
 
-        response = await self.client.chat.completions.create(
-            model=self.config.engine,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=self.config.max_tokens,
-            temperature=self.config.temperature,
-            response_format=response_format,
-        )
+        # If response_format is a Pydantic model, use beta API
+        if response_format and hasattr(response_format, "__pydantic_model__"):
+            response = await self.client.beta.chat.completions.parse(
+                model=self.config.engine,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=self.config.max_tokens,
+                temperature=self.config.temperature,
+                response_format=response_format,
+            )
+        else:
+            response = await self.client.chat.completions.create(
+                model=self.config.engine,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=self.config.max_tokens,
+                temperature=self.config.temperature,
+                response_format=response_format,
+            )
 
         return response.choices[0].message.content

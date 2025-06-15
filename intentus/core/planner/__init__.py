@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 import json
 
-from ..config import PlannerConfig
+from ..config import CoreConfig
 from ..engine.factory import create_llm_engine
 from ..memory import Memory
 from ..formatters import QueryAnalysis, NextStep, MemoryVerification
@@ -14,10 +14,18 @@ from ..formatters import QueryAnalysis, NextStep, MemoryVerification
 class Planner:
     """Planner class for Intentus agent."""
 
-    def __init__(self, llm_engine: Any, config: PlannerConfig):
+    def __init__(
+        self,
+        llm_engine_name: str,
+        toolbox_metadata: Dict[str, Any],
+        available_tools: List[str],
+        verbose: bool = True,
+    ):
         """Initialize the planner."""
-        self.llm_engine = llm_engine
-        self.config = config
+        self.llm_engine = create_llm_engine(llm_engine_name)
+        self.toolbox_metadata = toolbox_metadata
+        self.available_tools = available_tools
+        self.verbose = verbose
         self.query_analysis = None
         self.context = None
         self.subgoal = None
@@ -32,9 +40,7 @@ class Planner:
             return {}
         return {"image_path": image_path}
 
-    def generate_base_response(
-        self, question: str, image: str, max_tokens: str = 4000
-    ) -> str:
+    async def generate_base_response(self, question: str, image: str) -> str:
         image_info = self.get_image_info(image)
 
         input_data = [question]
@@ -46,16 +52,13 @@ class Planner:
             except Exception as e:
                 print(f"Error reading image file: {str(e)}")
 
-        self.base_response = self.llm_engine(input_data, max_tokens=max_tokens)
+        self.base_response = await self.llm_engine(question)
 
         return self.base_response
 
     async def analyze_query(self, question: str, image: str) -> str:
         """Analyze the query and determine required skills."""
-        input_data = [
-            {
-                "role": "user",
-                "content": f"""
+        prompt = f"""
 Task: Analyze the given query with accompanying inputs and determine the skills and tools needed to address it effectively.
 
 Image: {image}
@@ -74,12 +77,10 @@ Your response should include:
 3. Any additional considerations that might be important for addressing the query effectively.
 
 Please present your analysis in a clear, structured format.
-""",
-            }
-        ]
+"""
 
         response = await self.llm_engine(
-            input_data,
+            prompt,
             response_format={
                 "type": "json_schema",
                 "json_schema": {
@@ -123,7 +124,7 @@ Please present your analysis in a clear, structured format.
 
         return context, subgoal, tool
 
-    def generate_next_step(
+    async def generate_next_step(
         self,
         question: str,
         image: str,
@@ -132,7 +133,7 @@ Please present your analysis in a clear, structured format.
         step_count: int,
         max_step_count: int,
     ) -> Any:
-        prompt_generate_next_step = f"""
+        prompt = f"""
 Task: Determine the optimal next step to address the given query based on the provided analysis, available tools, and previous steps taken.
 
 Context:
@@ -141,10 +142,10 @@ Image: {image}
 Query Analysis: {query_analysis}
 
 Available Tools:
-{self.toolbox.tools}
+{self.available_tools}
 
 Tool Metadata:
-{self.toolbox.metadata}
+{self.toolbox_metadata}
 
 Previous Steps and Their Results:
 {memory.get_actions()}
@@ -189,135 +190,104 @@ Rules:
 - Select only ONE tool for this step.
 - The sub-goal MUST directly address the query and be achievable by the selected tool.
 - The Context section MUST include ALL necessary information for the tool to function, including ALL relevant file paths, data, and variables from previous steps.
-- The tool name MUST exactly match one from the available tools list: {self.toolbox.tools}.
-- Avoid redundancy by considering previous steps and building on prior results.
-- Your response MUST conclude with the Context, Sub-Goal, and Tool Name sections IN THIS ORDER, presented ONLY ONCE.
-- Include NO content after these three sections.
-
-Example (do not copy, use only as reference):
-Justification: [Your detailed explanation here]
-Context: Image path: "example/image.jpg", Previous detection results: [list of objects]
-Sub-Goal: Detect and count the number of specific objects in the image "example/image.jpg"
-Tool Name: Object_Detector_Tool
-
-Remember: Your response MUST end with the Context, Sub-Goal, and Tool Name sections, with NO additional content afterwards.
+- The tool name MUST exactly match one from the available tools list: {self.available_tools}.
 """
-        next_step = self.llm_engine(prompt_generate_next_step, response_format=NextStep)
-        return next_step
 
-    def verificate_context(
+        response = await self.llm_engine(
+            prompt,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "NextStep",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "justification": {"type": "string"},
+                            "context": {"type": "string"},
+                            "sub_goal": {"type": "string"},
+                            "tool_name": {"type": "string"},
+                        },
+                        "required": [
+                            "justification",
+                            "context",
+                            "sub_goal",
+                            "tool_name",
+                        ],
+                    },
+                },
+            },
+        )
+
+        return response
+
+    async def verificate_context(
         self, question: str, image: str, query_analysis: str, memory: Memory
     ) -> Any:
-        image_info = self.get_image_info(image)
-
-        prompt_memory_verification = f"""
-Task: Thoroughly evaluate the completeness and accuracy of the memory for fulfilling the given query, considering the potential need for additional tool usage.
+        """Verify if the context is complete."""
+        prompt_verificate_context = f"""
+Task: Verify if the current context is complete and if the query has been answered.
 
 Context:
 Query: {question}
-Image: {image_info}
-Available Tools: {self.toolbox.tools}
-Toolbox Metadata: {self.toolbox.metadata}
-Initial Analysis: {query_analysis}
-Memory (tools used and results): {memory.get_actions()}
+Image: {image}
+Query Analysis: {query_analysis}
 
-Detailed Instructions:
-1. Carefully analyze the query, initial analysis, and image (if provided):
-   - Identify the main objectives of the query.
-   - Note any specific requirements or constraints mentioned.
-   - If an image is provided, consider its relevance and what information it contributes.
+Previous Steps and Their Results:
+{memory.get_actions()}
 
-2. Review the available tools and their metadata:
-   - Understand the capabilities and limitations and best practices of each tool.
-   - Consider how each tool might be applicable to the query.
-
-3. Examine the memory content in detail:
-   - Review each tool used and its execution results.
-   - Assess how well each tool's output contributes to answering the query.
-
-4. Critical Evaluation (address each point explicitly):
-   a) Completeness: Does the memory fully address all aspects of the query?
-      - Identify any parts of the query that remain unanswered.
-      - Consider if all relevant information has been extracted from the image (if applicable).
-
-   b) Unused Tools: Are there any unused tools that could provide additional relevant information?
-      - Specify which unused tools might be helpful and why.
-
-   c) Inconsistencies: Are there any contradictions or conflicts in the information provided?
-      - If yes, explain the inconsistencies and suggest how they might be resolved.
-
-   d) Verification Needs: Is there any information that requires further verification due to tool limitations?
-      - Identify specific pieces of information that need verification and explain why.
-
-   e) Ambiguities: Are there any unclear or ambiguous results that could be clarified by using another tool?
-      - Point out specific ambiguities and suggest which tools could help clarify them.
-
-5. Final Determination:
-   Based on your thorough analysis, decide if the memory is complete and accurate enough to generate the final output, or if additional tool usage is necessary.
+Instructions:
+1. Analyze the current context and previous steps.
+2. Determine if the query has been answered.
+3. If not, identify what is missing.
 
 Response Format:
+Your response MUST follow this structure:
+1. Analysis: Explain your reasoning.
+2. Conclusion: Either "CONTINUE" or "STOP".
 
-If the memory is complete, accurate, AND verified:
-Explanation: 
-<Provide a detailed explanation of why the memory is sufficient. Reference specific information from the memory and explain its relevance to each aspect of the task. Address how each main point of the query has been satisfied.>
-
-Conclusion: STOP
-
-If the memory is incomplete, insufficient, or requires further verification:
-Explanation: 
-<Explain in detail why the memory is incomplete. Identify specific information gaps or unaddressed aspects of the query. Suggest which additional tools could be used, how they might contribute, and why their input is necessary for a comprehensive response.>
-
-Conclusion: CONTINUE
-
-IMPORTANT: Your response MUST end with either 'Conclusion: STOP' or 'Conclusion: CONTINUE' and nothing else. Ensure your explanation thoroughly justifies this conclusion.
+Rules:
+- "CONTINUE" if more steps are needed.
+- "STOP" if the query has been answered.
 """
 
-        input_data = [prompt_memory_verification]
-        if image_info:
-            try:
-                with open(image_info["image_path"], "rb") as file:
-                    image_bytes = file.read()
-                input_data.append(image_bytes)
-            except Exception as e:
-                print(f"Error reading image file: {str(e)}")
-
-        stop_verification = self.llm_engine(
-            input_data, response_format=MemoryVerification
+        response = await self.llm_engine(
+            prompt_verificate_context,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "MemoryVerification",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "analysis": {"type": "string"},
+                            "stop_signal": {"type": "string"},
+                        },
+                        "required": ["analysis", "stop_signal"],
+                    },
+                },
+            },
         )
 
-        return stop_verification
+        return response
 
-    def extract_conclusion(self, response: Any) -> str:
+    def extract_conclusion(self, response: Any) -> Tuple[str, str]:
+        """Extract conclusion from the response."""
         if isinstance(response, MemoryVerification):
             analysis = response.analysis
-            stop_signal = response.stop_signal
-            if stop_signal:
-                return analysis, "STOP"
-            else:
-                return analysis, "CONTINUE"
+            conclusion = response.stop_signal
         else:
-            analysis = response
-            pattern = r"conclusion\**:?\s*\**\s*(\w+)"
-            matches = list(re.finditer(pattern, response, re.IGNORECASE | re.DOTALL))
-            # if match:
-            #     conclusion = match.group(1).upper()
-            #     if conclusion in ['STOP', 'CONTINUE']:
-            #         return conclusion
-            if matches:
-                conclusion = matches[-1].group(1).upper()
-                if conclusion in ["STOP", "CONTINUE"]:
-                    return analysis, conclusion
+            # Parse the response to extract analysis and conclusion
+            lines = str(response).split("\n")
+            analysis = ""
+            conclusion = ""
 
-            # If no valid conclusion found, search for STOP or CONTINUE anywhere in the text
-            if "stop" in response.lower():
-                return analysis, "STOP"
-            elif "continue" in response.lower():
-                return analysis, "CONTINUE"
-            else:
-                print(
-                    "No valid conclusion (STOP or CONTINUE) found in the response. Continuing..."
-                )
-                return analysis, "CONTINUE"
+            for line in lines:
+                if line.startswith("Analysis:"):
+                    analysis = line.replace("Analysis:", "").strip()
+                elif line.startswith("Conclusion:"):
+                    conclusion = line.replace("Conclusion:", "").strip()
+
+        return analysis, conclusion
 
     async def generate_final_output(
         self, question: str, image: str, memory: Memory

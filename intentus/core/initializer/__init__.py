@@ -14,7 +14,7 @@ class Initializer:
         enabled_tools: List[str] = [],
         llm_engine: str = None,
         verbose: bool = False,
-        vllm_config_path: str = None,
+        config_path: str = None,
     ):
         self.toolbox_metadata = {}
         self.available_tools = []
@@ -23,7 +23,7 @@ class Initializer:
         self.llm_engine = llm_engine  # llm engine name
         self.verbose = verbose
         self.vllm_server_process = None
-        self.vllm_config_path = vllm_config_path
+        self.config_path = config_path
         print("\n==> Initializing core...")
         print(f"Enabled tools: {self.enabled_tools}")
         print(f"LLM engine name: {self.llm_engine}")
@@ -171,12 +171,12 @@ class Initializer:
             "--port",
             "8888",
         ]
-        if self.vllm_config_path is not None:
+        if self.config_path is not None:
             command = [
                 "vllm",
                 "serve",
                 "--config",
-                self.vllm_config_path,
+                self.config_path,
                 "--port",
                 "8888",
             ]
@@ -198,22 +198,10 @@ class Initializer:
             if output.strip() != "":
                 print("VLLM server standard output:", output.strip())
             if error.strip() != "":
-                print("VLLM server standard error:", error.strip())
-
-            if (
-                "Application startup complete." in output
-                or "Application startup complete." in error
-            ):
-                print("VLLM server started successfully.")
+                print("VLLM server error output:", error.strip())
+            if "Server started" in output:
+                print("VLLM server started successfully!")
                 break
-
-            if vllm_process.poll() is not None:
-                print(
-                    "VLLM server process terminated unexpectedly. Please check the output above for more information."
-                )
-                break
-
-        self.vllm_server_process = vllm_process
 
 
 if __name__ == "__main__":

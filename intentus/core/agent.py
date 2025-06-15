@@ -1,170 +1,211 @@
-from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, field
+import argparse
 import time
 import json
 import os
 import logging
-from pathlib import Path
-import asyncio
+from typing import Optional, Dict, Any, List
+from dataclasses import dataclass
 
 from .config import CoreConfig
-from ..tools.config import ToolboxConfig
+from .engine.factory import create_llm_engine
+from .initializer import Initializer
 from .planner import Planner
 from .memory import Memory
 from .executor import Executor
-from .initializer import Initializer
-from .engine.factory import create_llm_engine
-
-# Set up logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-# Create handlers
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
-file_handler = logging.FileHandler("intentus.log")
-file_handler.setLevel(logging.DEBUG)
-
-# Create formatters and add them to handlers
-console_format = logging.Formatter("%(message)s")
-file_format = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-console_handler.setFormatter(console_format)
-file_handler.setFormatter(file_format)
-
-# Add handlers to logger
-logger.addHandler(console_handler)
-logger.addHandler(file_handler)
+from .formatters import QueryAnalysis, NextStep, MemoryVerification, ToolCommand
 
 
 @dataclass
 class AgentConfig:
     """Configuration for the Intentus agent."""
 
-    core: CoreConfig = field(default_factory=CoreConfig)
-    toolbox: ToolboxConfig = field(default_factory=ToolboxConfig)
-
-    def __post_init__(self):
-        """Post-initialization setup."""
-        # Set up logging level based on config
-        logging.basicConfig(
-            level=logging.DEBUG if self.core.verbose else logging.INFO,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
+    llm_engine: str = "gpt-4.1-mini"
+    enabled_tools: List[str] = None
+    verbose: bool = True
+    config_path: str = None
+    max_steps: int = 5
+    temperature: float = 0.7
+    max_tokens: int = 4000
 
 
 class IntentusAgent:
-    """Main agent class for orchestrating reasoning and execution."""
+    """Main agent class for Intentus."""
 
     def __init__(self, config: AgentConfig):
-        logger.info("Initializing IntentusAgent...")
+        """Initialize the agent."""
         self.config = config
+        self.llm_engine = create_llm_engine(config.llm_engine)
 
         # Initialize components
-        self._initialize_components()
-
-        # Set up cache directory
-        logger.debug(f"Setting up cache directory: {config.core.executor.cache_dir}")
-        self.executor.set_query_cache_dir(str(config.core.executor.cache_dir))
-        os.makedirs(config.core.executor.cache_dir, exist_ok=True)
-        logger.info("IntentusAgent initialized successfully")
-
-    def _initialize_components(self):
-        """Initialize core components."""
-        # Initialize LLM engine
-        self.llm_engine = create_llm_engine(self.config.core.llm)
-
-        # Initialize tools
         self.initializer = Initializer(
-            enabled_tools=self.config.toolbox.enabled_tools,
-            llm_engine=self.config.core.llm.engine,
-            verbose=self.config.core.verbose,
+            enabled_tools=config.enabled_tools,
+            llm_engine=config.llm_engine,
+            verbose=config.verbose,
+            config_path=config.config_path,
         )
 
-        # Initialize planner
+        # Get toolbox metadata and available tools
+        self.toolbox_metadata = self.initializer.toolbox_metadata
+        self.available_tools = self.initializer.available_tools
+
+        # Initialize planner with new interface
         self.planner = Planner(
-            llm_engine=self.llm_engine, config=self.config.core.planner
+            llm_engine_name=config.llm_engine,
+            toolbox_metadata=self.toolbox_metadata,
+            available_tools=self.available_tools,
+            verbose=config.verbose,
         )
 
-        # Initialize memory
         self.memory = Memory()
-
-        # Initialize executor
         self.executor = Executor(
-            llm_engine_name=self.config.core.llm.engine,
-            root_cache_dir=str(self.config.core.executor.cache_dir),
-            max_time=self.config.core.executor.timeout,
-            verbose=self.config.core.verbose,
+            llm_engine=config.llm_engine,
+            toolbox_metadata=self.toolbox_metadata,
+            available_tools=self.available_tools,
+            verbose=config.verbose,
         )
 
-    async def run(
-        self,
-        task: str,
-        context: Dict[str, Any] = None,
-        image: str = None,
-    ) -> Dict[str, Any]:
-        """
-        Run the agent on a task.
-
-        Args:
-            task: The task to execute
-            context: Additional context for the task
-            image: Optional image path for visual tasks
-
-        Returns:
-            Dict containing the execution results
-        """
+    async def run(self, question: str, image: str = None) -> Dict[str, Any]:
+        """Run the agent on a task."""
         start_time = time.time()
-        logger.info(f"Starting task execution: {task}")
-        logger.info(f"🔍 Task: {task}")
-        logger.info(f"📝 Context: {json.dumps(context, indent=2)}")
 
-        try:
-            # Analyze task
-            logger.debug("Analyzing task...")
-            task_analysis = await self.planner.analyze_query(task, image or "")
+        # Step 1: Analyze the query
+        query_analysis = await self.planner.analyze_query(question, image)
 
-            # Validate tools
-            logger.debug("Validating tools...")
-            if not self.initializer.available_tools:
-                raise ValueError("No tools available for execution")
+        # Step 2: Generate base response
+        base_response = await self.planner.generate_base_response(question, image)
 
-            # Generate command
-            logger.debug("Generating command...")
-            command = await self.executor.generate_tool_command(
-                question=task,
-                image=image or "",
-                context=json.dumps(context) if context else "",
-                sub_goal=task_analysis,
-                tool_name=self.initializer.available_tools[0],
-                tool_metadata=self.initializer.toolbox_metadata,
+        # Step 3: Main execution loop
+        step_count = 0
+        while step_count < self.config.max_steps:
+            # Generate next step
+            next_step = await self.planner.generate_next_step(
+                question=question,
+                image=image,
+                query_analysis=query_analysis,
+                memory=self.memory,
+                step_count=step_count,
+                max_step_count=self.config.max_steps,
             )
 
-            # Execute command
-            logger.debug("Executing command...")
-            execution_result = await self.executor.execute_tool_command(
-                self.initializer.available_tools[0], command
+            # Extract context, subgoal, and tool
+            context, subgoal, tool = self.planner.extract_context_subgoal_and_tool(
+                next_step
             )
 
-            # Generate final output
-            logger.debug("Generating final output...")
-            final_output = await self.planner.generate_final_output(
-                task, image or "", self.memory
+            # Execute the step
+            result = await self.executor.execute_step(
+                context=context, subgoal=subgoal, tool=tool, memory=self.memory
             )
 
-            # Calculate execution time
-            execution_time = time.time() - start_time
+            # Add to memory
+            self.memory.add_action(
+                step_count=step_count,
+                tool_name=tool,
+                sub_goal=subgoal,
+                command=context,
+                result=result,
+            )
 
-            # Prepare result
-            result = {
-                "task": task,
-                "analysis": task_analysis,
-                "step_count": 1,  # For now, we're only doing one step
-                "execution_time": execution_time,
-                "final_output": final_output,
-            }
+            # Verify if we should stop
+            verification = await self.planner.verificate_context(
+                question=question,
+                image=image,
+                query_analysis=query_analysis,
+                memory=self.memory,
+            )
 
-            return result
+            analysis, conclusion = self.planner.extract_conclusion(verification)
+            if conclusion == "STOP":
+                break
 
-        except Exception as e:
-            logger.error(f"Error executing task: {str(e)}", exc_info=True)
-            raise
+            step_count += 1
+
+        # Step 4: Generate final output
+        final_output = await self.planner.generate_final_output(
+            question=question, image=image, memory=self.memory
+        )
+
+        end_time = time.time()
+        execution_time = end_time - start_time
+
+        return {
+            "query_analysis": query_analysis,
+            "base_response": base_response,
+            "final_output": final_output,
+            "execution_time": execution_time,
+            "steps_taken": step_count + 1,
+            "memory": self.memory.get_actions(),
+        }
+
+
+def create_agent(config: CoreConfig, verbose: bool = True) -> IntentusAgent:
+    """
+    Create an IntentusAgent instance with the given configuration.
+
+    Args:
+        config (CoreConfig): Configuration for the agent
+        verbose (bool): Whether to print detailed logs
+
+    Returns:
+        IntentusAgent: Configured agent instance
+    """
+    return IntentusAgent(config, verbose=verbose)
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="Run the octotools demo with specified parameters."
+    )
+    parser.add_argument("--llm_engine_name", default="gpt-4o", help="LLM engine name.")
+    parser.add_argument(
+        "--output_types",
+        default="base,final,direct",
+        help="Comma-separated list of required outputs (base,final,direct)",
+    )
+    parser.add_argument(
+        "--enabled_tools",
+        default="Generalist_Solution_Generator_Tool",
+        help="List of enabled tools.",
+    )
+    parser.add_argument(
+        "--root_cache_dir",
+        default="solver_cache",
+        help="Path to solver cache directory.",
+    )
+    parser.add_argument(
+        "--max_tokens",
+        type=int,
+        default=4000,
+        help="Maximum tokens for LLM generation.",
+    )
+    parser.add_argument(
+        "--max_steps", type=int, default=10, help="Maximum number of steps to execute."
+    )
+    parser.add_argument(
+        "--max_time", type=int, default=300, help="Maximum time allowed in seconds."
+    )
+    parser.add_argument(
+        "--verbose", type=bool, default=True, help="Enable verbose output."
+    )
+    return parser.parse_args()
+
+
+def main(args):
+    config = CoreConfig(
+        llm_engine=args.llm_engine_name,
+        enabled_tools=args.enabled_tools,
+        cache_dir=args.root_cache_dir,
+        max_steps=args.max_steps,
+        max_time=args.max_time,
+        max_output_length=args.max_tokens,
+    )
+    agent = create_agent(config, verbose=args.verbose)
+
+    # Solve the task or problem
+    result = agent.run("What is the capital of France?")
+    print(f"\nTask Result:\n{json.dumps(result, indent=2)}")
+
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    main(args)
