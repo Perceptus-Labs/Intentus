@@ -1,4 +1,7 @@
 # tools/base.py
+import logging
+
+
 class BaseTool:
     """
     A base class for building tool classes that perform specific tasks, such as image processing or text detection.
@@ -43,6 +46,17 @@ class BaseTool:
         self.output_dir = output_dir
         self.user_metadata = user_metadata
         self.model_string = model_string
+
+        # Initialize logger
+        self.logger = logging.getLogger(self.__class__.__name__)
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+            self.logger.setLevel(logging.DEBUG)
 
     def set_metadata(
         self,
