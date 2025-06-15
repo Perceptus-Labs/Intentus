@@ -30,7 +30,7 @@ class Initializer:
         self._set_up_tools()
 
         # if vllm, set up the vllm server
-        if llm_engine.startswith("vllm-"):
+        if llm_engine and llm_engine.startswith("vllm-"):
             self.setup_vllm_server()
 
     def get_project_root(self) -> str:
@@ -69,12 +69,14 @@ class Initializer:
         tools_metadata = {}
         for tool_dir in os.listdir(tools_dir):
             tool_path = os.path.join(tools_dir, tool_dir)
-            if os.path.isdir(tool_path):
+            if os.path.isdir(tool_path) and not tool_dir.startswith("__"):
                 tool_file = os.path.join(tool_path, "tool.py")
                 if os.path.exists(tool_file):
-                    print(f"\n==> Attempting to import: tools.{tool_dir}.tool")
+                    print(f"\n==> Attempting to import: intentus.tools.{tool_dir}.tool")
                     try:
-                        module = importlib.import_module(f"tools.{tool_dir}.tool")
+                        module = importlib.import_module(
+                            f"intentus.tools.{tool_dir}.tool"
+                        )
                         for item_name in dir(module):
                             item = getattr(module, item_name)
                             if (
@@ -89,6 +91,8 @@ class Initializer:
                                 print(f"Metadata for {item_name}: {metadata}")
                     except Exception as e:
                         print(f"Error importing {tool_dir}: {str(e)}")
+                        print("Full traceback:")
+                        print(traceback.format_exc())
 
         print(f"\n==> Total number of tools imported: {len(tools_metadata)}")
         return tools_metadata
@@ -101,8 +105,11 @@ class Initializer:
             print(f"Checking availability of {tool_name}...")
 
             try:
+                # Get the tool directory name from the tool name
+                tool_dir = tool_name.lower().replace("_tool", "")
+
                 # Import the tool module
-                module_name = f"tools.{tool_name.lower().replace('_tool', '')}.tool"
+                module_name = f"intentus.tools.{tool_dir}.tool"
                 module = importlib.import_module(module_name)
 
                 # Get the tool class
@@ -111,11 +118,13 @@ class Initializer:
                 # Instantiate the tool
                 tool_instance = tool_class()
 
-                # FIXME This is a temporary workaround to avoid running demo commands
+                # Add to available tools
                 self.available_tools.append(tool_name)
+                print(f"Successfully initialized {tool_name}")
 
             except Exception as e:
                 print(f"Error checking availability of {tool_name}: {str(e)}")
+                print("Full traceback:")
                 print(traceback.format_exc())
 
         # update the toolmetadata with the available tools
@@ -123,20 +132,16 @@ class Initializer:
             tool: self.toolbox_metadata[tool] for tool in self.available_tools
         }
         print("\n✅ Finished running demo commands for each tool.")
-        # print(f"Updated total number of available tools: {len(self.toolbox_metadata)}")
-        # print(f"Available tools: {self.available_tools}")
         return self.available_tools
 
     def _set_up_tools(self) -> None:
         print("\n==> Setting up tools...")
 
-        # Keep enabled tools
-        self.available_tools = [
-            tool.lower().replace("_tool", "") for tool in self.enabled_tools
-        ]
+        # Keep original tool names
+        self.available_tools = self.enabled_tools.copy()
 
         # Load tools and get metadata
-        self.load_tools_and_get_metadata()
+        self.toolbox_metadata = self.load_tools_and_get_metadata()
 
         # Run demo commands to determine available tools
         self.run_demo_commands()
@@ -212,7 +217,7 @@ class Initializer:
 
 
 if __name__ == "__main__":
-    enabled_tools = ["Generalist_Solution_Generator_Tool"]
+    enabled_tools = ["Google_Search_Tool"]
     initializer = Initializer(enabled_tools=enabled_tools)
 
     print("\nAvailable tools:")

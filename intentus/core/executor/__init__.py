@@ -3,8 +3,10 @@ import os
 import json
 import time
 from dataclasses import dataclass
+import re
+from datetime import datetime
 
-from ..config import ExecutorConfig
+from ..config import ExecutorConfig, LLMConfig
 from ..engine.factory import create_llm_engine
 from ..formatters import ToolCommand
 
@@ -155,9 +157,15 @@ Reason: The command should process multiple items in a single execution, not sep
 
 Remember: Your response MUST end with the Generated Command, which should be valid Python code including any necessary data preparation steps and one or more `execution = tool.execute(` calls, without any additional explanatory text. The format `execution = tool.execute` must be strictly followed, and the last line must begin with `execution = tool.execute` to capture the final output."""
 
-        llm_generate_tool_command = create_llm_engine(
-            model_string=self.llm_engine_name, is_multimodal=False
+        # Create LLM config
+        llm_config = LLMConfig(
+            engine=self.llm_engine_name,
+            max_tokens=4000,
+            temperature=0.7,
+            is_multimodal=False,
         )
+
+        llm_generate_tool_command = create_llm_engine(llm_config)
         tool_command = llm_generate_tool_command(
             prompt_generate_tool_command, response_format=ToolCommand
         )
