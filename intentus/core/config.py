@@ -11,6 +11,7 @@ class CoreConfig:
     llm_engine: str = "gpt-4.1-mini"
     temperature: float = 0.7
     model_params: Dict[str, Any] = field(default_factory=dict)
+    use_cache: bool = False  # Whether to use caching for LLM responses
 
     # Tool settings
     enabled_tools: List[str] = field(default_factory=lambda: ["all"])
@@ -20,7 +21,7 @@ class CoreConfig:
     # Execution settings
     max_steps: int = 10
     max_time: int = 300
-    cache_dir: Path = Path("cache")
+    cache_dir: Optional[Path] = None  # Optional cache directory
     num_threads: int = 1
 
     # Logging settings
@@ -28,8 +29,9 @@ class CoreConfig:
     log_level: str = "DEBUG"
 
     def __post_init__(self):
-        # Ensure cache directory exists
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        # Only create cache directory if caching is enabled
+        if self.use_cache and self.cache_dir is not None:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Ensure tools directory exists
         if not self.tools_dir.exists():
