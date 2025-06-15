@@ -162,7 +162,7 @@ Remember: Your response MUST end with the Generated Command, which should be val
             engine=self.llm_engine_name,
             max_tokens=4000,
             temperature=0.7,
-            is_multimodal=False,
+            model_params={"is_multimodal": False},
         )
 
         llm_generate_tool_command = create_llm_engine(llm_config)
