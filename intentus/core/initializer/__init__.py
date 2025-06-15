@@ -11,7 +11,7 @@ class Initializer:
     def __init__(
         self,
         enabled_tools: List[str] = [],
-        model_string: str = None,
+        llm_engine: str = None,
         verbose: bool = False,
         vllm_config_path: str = None,
     ):
@@ -19,24 +19,24 @@ class Initializer:
         self.available_tools = []
         self.enabled_tools = enabled_tools
         self.load_all = self.enabled_tools == ["all"]
-        self.model_string = model_string  # llm model string
+        self.llm_engine = llm_engine  # llm engine name
         self.verbose = verbose
         self.vllm_server_process = None
         self.vllm_config_path = vllm_config_path
         print("\n==> Initializing core...")
         print(f"Enabled tools: {self.enabled_tools}")
-        print(f"LLM engine name: {self.model_string}")
+        print(f"LLM engine name: {self.llm_engine}")
         self._set_up_tools()
 
         # if vllm, set up the vllm server
-        if model_string.startswith("vllm-"):
+        if llm_engine.startswith("vllm-"):
             self.setup_vllm_server()
 
     def get_project_root(self):
         current_dir = os.path.dirname(os.path.abspath(__file__))
         while current_dir != "/":
-            if os.path.exists(os.path.join(current_dir, "core")):
-                return os.path.join(current_dir, "core")
+            if os.path.exists(os.path.join(current_dir, "intentus")):
+                return os.path.join(current_dir, "intentus")
             current_dir = os.path.dirname(current_dir)
         raise Exception("Could not find project root")
 
@@ -44,14 +44,13 @@ class Initializer:
         # Implementation of load_tools_and_get_metadata function
         print("Loading tools and getting metadata...")
         self.toolbox_metadata = {}
-        core_dir = self.get_project_root()
-        tools_dir = os.path.join(core_dir, "tools")
-        # print(f"core directory: {core_dir}")
-        # print(f"Tools directory: {tools_dir}")
+        project_root = self.get_project_root()
+        tools_dir = os.path.join(project_root, "tools")  # Look under intentus/tools
+        print(f"Project root: {project_root}")
+        print(f"Tools directory: {tools_dir}")
 
-        # Add the core directory and its parent to the Python path
-        sys.path.insert(0, core_dir)
-        sys.path.insert(0, os.path.dirname(core_dir))
+        # Add the project root to the Python path
+        sys.path.insert(0, project_root)
         print(f"Updated Python path: {sys.path}")
 
         if not os.path.exists(tools_dir):
@@ -59,14 +58,13 @@ class Initializer:
             return self.toolbox_metadata
 
         for root, dirs, files in os.walk(tools_dir):
-            # print(f"\nScanning directory: {root}")
             if "tool.py" in files and (
                 self.load_all or os.path.basename(root) in self.available_tools
             ):
                 file = "tool.py"
                 module_path = os.path.join(root, file)
                 module_name = os.path.splitext(file)[0]
-                relative_path = os.path.relpath(module_path, core_dir)
+                relative_path = os.path.relpath(module_path, project_root)
                 import_path = ".".join(os.path.split(relative_path)).replace(
                     os.sep, "."
                 )[:-3]
@@ -87,7 +85,7 @@ class Initializer:
                                     hasattr(obj, "require_llm_engine")
                                     and obj.require_llm_engine
                                 ):
-                                    tool_instance = obj(model_string=self.model_string)
+                                    tool_instance = obj(model_string=self.llm_engine)
                                 else:
                                     tool_instance = obj()
 
@@ -114,7 +112,7 @@ class Initializer:
                                     ),
                                     "user_metadata": getattr(
                                         tool_instance, "user_metadata", {}
-                                    ),  # This is a placeholder for user-defined metadata
+                                    ),
                                     "require_llm_engine": getattr(
                                         obj, "require_llm_engine", False
                                     ),
@@ -200,7 +198,7 @@ class Initializer:
         command = [
             "vllm",
             "serve",
-            self.model_string.replace("vllm-", ""),
+            self.llm_engine.replace("vllm-", ""),
             "--port",
             "8888",
         ]

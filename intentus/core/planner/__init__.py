@@ -1,11 +1,14 @@
 import os
 import re
 from PIL import Image
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Optional, Tuple
+from dataclasses import dataclass
+import json
 
-from core.engine.factory import create_llm_engine
-from core.memory import Memory
-from core.formatters import QueryAnalysis, NextStep, MemoryVerification
+from ..config import PlannerConfig
+from ..engine.factory import create_llm_engine
+from ..memory import Memory
+from ..formatters import QueryAnalysis, NextStep, MemoryVerification
 
 
 class Planner:
@@ -57,7 +60,8 @@ class Planner:
 
         return self.base_response
 
-    def analyze_query(self, question: str, image: str) -> str:
+    async def analyze_query(self, question: str, image: str) -> str:
+        """Analyze the query and determine required tools and steps."""
         image_info = self.get_image_info(image)
 
         query_prompt = f"""
@@ -96,7 +100,7 @@ Please present your analysis in a clear, structured format.
             except Exception as e:
                 print(f"Error reading image file: {str(e)}")
 
-        self.query_analysis = self.llm_engine_mm(
+        self.query_analysis = await self.llm_engine_mm(
             input_data, response_format=QueryAnalysis
         )
 
@@ -334,50 +338,35 @@ IMPORTANT: Your response MUST end with either 'Conclusion: STOP' or 'Conclusion:
                 )
                 return analysis, "CONTINUE"
 
-    def generate_final_output(self, question: str, image: str, memory: Memory) -> str:
+    async def generate_final_output(
+        self, question: str, image: str, memory: Memory
+    ) -> str:
+        """Generate the final output based on the task execution results."""
         image_info = self.get_image_info(image)
 
         prompt_generate_final_output = f"""
-Task: Generate the final output based on the query, image, and tools used in the process.
+Task: Generate a comprehensive final output based on the task execution results.
 
-Context:
 Query: {question}
 Image: {image_info}
-Actions Taken:
+
+Previous Steps and Their Results:
 {memory.get_actions()}
 
 Instructions:
-1. Review the query, image, and all actions taken during the process.
-2. Consider the results obtained from each tool execution.
-3. Incorporate the relevant information from the memory to generate the step-by-step final output.
-4. The final output should be consistent and coherent using the results from the tools.
+1. Review the original query and any accompanying inputs.
+2. Analyze the results from all previous steps.
+3. Synthesize the information into a clear, coherent response.
+4. Ensure the response directly addresses the original query.
+5. Include relevant details and explanations where necessary.
 
-Output Structure:
-Your response should be well-organized and include the following sections:
+Your response should:
+1. Be clear and concise
+2. Directly answer the query
+3. Include relevant details from the execution results
+4. Be well-structured and easy to understand
 
-1. Summary:
-   - Provide a brief overview of the query and the main findings.
-
-2. Detailed Analysis:
-   - Break down the process of answering the query step-by-step.
-   - For each step, mention the tool used, its purpose, and the key results obtained.
-   - Explain how each step contributed to addressing the query.
-
-3. Key Findings:
-   - List the most important discoveries or insights gained from the analysis.
-   - Highlight any unexpected or particularly interesting results.
-
-4. Answer to the Query:
-   - Directly address the original question with a clear and concise answer.
-   - If the query has multiple parts, ensure each part is answered separately.
-
-5. Additional Insights (if applicable):
-   - Provide any relevant information or insights that go beyond the direct answer to the query.
-   - Discuss any limitations or areas of uncertainty in the analysis.
-
-6. Conclusion:
-   - Summarize the main points and reinforce the answer to the query.
-   - If appropriate, suggest potential next steps or areas for further investigation.
+Please provide your final output in a clear, structured format.
 """
 
         input_data = [prompt_generate_final_output]
@@ -389,9 +378,8 @@ Your response should be well-organized and include the following sections:
             except Exception as e:
                 print(f"Error reading image file: {str(e)}")
 
-        final_output = self.llm_engine_mm(input_data)
-
-        return final_output
+        final_output = await self.llm_engine_mm(input_data)
+        return str(final_output).strip()
 
     def generate_direct_output(self, question: str, image: str, memory: Memory) -> str:
         image_info = self.get_image_info(image)

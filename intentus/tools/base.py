@@ -1,8 +1,4 @@
-# core/tools/base.py
-
-from core.engine.openai import ChatOpenAI
-
-
+# tools/base.py
 class BaseTool:
     """
     A base class for building tool classes that perform specific tasks, such as image processing or text detection.

@@ -1,15 +1,19 @@
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import time
 import json
 import os
 import logging
 from pathlib import Path
+import asyncio
 
+from .config import CoreConfig
+from ..tools.config import ToolboxConfig
 from .planner import Planner
 from .memory import Memory
 from .executor import Executor
 from .initializer import Initializer
+from .engine.factory import create_llm_engine
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -34,22 +38,18 @@ logger.addHandler(file_handler)
 
 @dataclass
 class AgentConfig:
-    """Configuration for the IntentusAgent."""
+    """Configuration for the Intentus agent."""
 
-    llm_engine: str = "gpt-4.1-mini"
-    enabled_tools: List[str] = None
-    max_steps: int = 10
-    max_time: int = 300
-    max_tokens: int = 4000
-    cache_dir: str = "cache"
-    verbose: bool = True
-    log_level: str = "DEBUG"
+    core: CoreConfig = field(default_factory=CoreConfig)
+    toolbox: ToolboxConfig = field(default_factory=ToolboxConfig)
 
     def __post_init__(self):
-        if self.enabled_tools is None:
-            self.enabled_tools = ["all"]
-        # Set log level based on config
-        logger.setLevel(getattr(logging, self.log_level.upper()))
+        """Post-initialization setup."""
+        # Set up logging level based on config
+        logging.basicConfig(
+            level=logging.DEBUG if self.core.verbose else logging.INFO,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        )
 
 
 class IntentusAgent:
@@ -60,173 +60,112 @@ class IntentusAgent:
         self.config = config
 
         # Initialize components
-        logger.debug("Initializing components...")
-        self.initializer = Initializer(
-            llm_engine=config.llm_engine, enabled_tools=config.enabled_tools
-        )
-        logger.debug(f"Available tools: {self.initializer.get_available_tools()}")
-
-        self.planner = Planner(
-            llm_engine=config.llm_engine,
-            available_tools=self.initializer.get_available_tools(),
-            toolbox_metadata=self.initializer.get_toolbox_metadata(),
-        )
-
-        self.memory = Memory()
-
-        self.executor = Executor(
-            llm_engine=config.llm_engine,
-            toolbox_metadata=self.initializer.get_toolbox_metadata(),
-        )
+        self._initialize_components()
 
         # Set up cache directory
-        logger.debug(f"Setting up cache directory: {config.cache_dir}")
-        self.executor.set_query_cache_dir(config.cache_dir)
-        os.makedirs(config.cache_dir, exist_ok=True)
+        logger.debug(f"Setting up cache directory: {config.core.executor.cache_dir}")
+        self.executor.set_query_cache_dir(str(config.core.executor.cache_dir))
+        os.makedirs(config.core.executor.cache_dir, exist_ok=True)
         logger.info("IntentusAgent initialized successfully")
 
+    def _initialize_components(self):
+        """Initialize all core components."""
+        # Initialize LLM engine
+        self.llm_engine = create_llm_engine(self.config.core.llm.engine)
+
+        # Initialize Planner
+        self.planner = Planner(
+            llm_engine_name=self.config.core.llm.engine,
+            verbose=self.config.core.verbose,
+        )
+
+        # Initialize Memory
+        self.memory = Memory()
+
+        # Initialize Executor
+        self.executor = Executor(
+            llm_engine_name=self.config.core.llm.engine,
+            root_cache_dir=str(self.config.core.executor.cache_dir),
+            max_time=self.config.core.executor.timeout,
+            verbose=self.config.core.verbose,
+        )
+
+        # Initialize Initializer
+        self.initializer = Initializer(
+            enabled_tools=self.config.toolbox.enabled_tools,
+            llm_engine=self.config.core.llm.engine,
+            verbose=self.config.core.verbose,
+        )
+
     async def run(
-        self, task: str, context: Optional[Dict[str, Any]] = None
+        self,
+        task: str,
+        context: Dict[str, Any] = None,
+        image: str = None,
     ) -> Dict[str, Any]:
         """
-        Run the agent on a given task.
+        Run the agent on a task.
 
         Args:
             task: The task to execute
-            context: Optional context information (e.g., image paths, additional data)
+            context: Additional context for the task
+            image: Optional image path for visual tasks
 
         Returns:
-            Dict containing execution results and metadata
+            Dict containing the execution results
         """
-        logger.info(f"Starting task execution: {task}")
         start_time = time.time()
-        result = {"task": task, "context": context, "start_time": start_time}
+        logger.info(f"Starting task execution: {task}")
+        logger.info(f"🔍 Task: {task}")
+        logger.info(f"📝 Context: {json.dumps(context, indent=2)}")
 
-        if self.config.verbose:
-            logger.info(f"🔍 Task: {task}")
-            if context:
-                logger.info(f"📝 Context: {json.dumps(context, indent=2)}")
+        try:
+            # Analyze task
+            logger.debug("Analyzing task...")
+            task_analysis = await self.planner.analyze_query(task, image or "")
 
-        # [1] Analyze task
-        logger.debug("Analyzing task...")
-        task_analysis = await self.planner.analyze_query(task, context)
-        result["analysis"] = task_analysis
+            # Validate tools
+            logger.debug("Validating tools...")
+            if not self.initializer.available_tools:
+                raise ValueError("No tools available for execution")
 
-        if self.config.verbose:
-            logger.info(f"🔍 Task Analysis:\n{json.dumps(task_analysis, indent=2)}")
-
-        # [2] Generate and execute plan
-        step_count = 0
-        while (
-            step_count < self.config.max_steps
-            and (time.time() - start_time) < self.config.max_time
-        ):
-            step_count += 1
-            step_start = time.time()
-            logger.info(f"Starting step {step_count}")
-
-            # Generate next step
-            logger.debug("Generating next step...")
-            next_step = await self.planner.generate_next_step(
-                task,
-                context,
-                task_analysis,
-                self.memory,
-                step_count,
-                self.config.max_steps,
+            # Generate command
+            logger.debug("Generating command...")
+            command = await self.executor.generate_tool_command(
+                question=task,
+                image=image or "",
+                context=json.dumps(context) if context else "",
+                sub_goal=task_analysis,
+                tool_name=self.initializer.available_tools[0],
+                tool_metadata=self.initializer.toolbox_metadata,
             )
-
-            # Extract components
-            context, sub_goal, tool_name = (
-                self.planner.extract_context_subgoal_and_tool(next_step)
-            )
-
-            if self.config.verbose:
-                logger.info(f"🎯 Step {step_count}:")
-                logger.info(f"Context: {context}")
-                logger.info(f"Sub-goal: {sub_goal}")
-                logger.info(f"Tool: {tool_name}")
-
-            # Validate tool
-            if tool_name not in self.planner.available_tools:
-                logger.warning(f"⚠️ Tool '{tool_name}' not available")
-                continue
-
-            # Generate and execute command
-            logger.debug(f"Generating command for tool: {tool_name}")
-            tool_command = await self.executor.generate_tool_command(
-                task,
-                context,
-                context,
-                sub_goal,
-                tool_name,
-                self.planner.toolbox_metadata[tool_name],
-            )
-
-            analysis, explanation, command = (
-                self.executor.extract_explanation_and_command(tool_command)
-            )
-
-            if self.config.verbose:
-                logger.info(f"📝 Command Generation:")
-                logger.info(f"Analysis: {analysis}")
-                logger.info(f"Explanation: {explanation}")
-                logger.info(f"Command: {command}")
 
             # Execute command
-            logger.debug(f"Executing command for tool: {tool_name}")
+            logger.debug("Executing command...")
             execution_result = await self.executor.execute_tool_command(
-                tool_name, command
+                self.initializer.available_tools[0], command
             )
 
-            if self.config.verbose:
-                logger.info(f"🛠️ Execution Result:")
-                logger.info(json.dumps(execution_result, indent=2))
-
-            # Update memory
-            logger.debug("Updating memory...")
-            self.memory.add_action(
-                step_count, tool_name, sub_goal, command, execution_result
+            # Generate final output
+            logger.debug("Generating final output...")
+            final_output = await self.planner.generate_final_output(
+                task, image or "", self.memory
             )
 
-            # Verify if task is complete
-            logger.debug("Verifying context...")
-            verification = await self.planner.verificate_context(
-                task, context, task_analysis, self.memory
-            )
+            # Calculate execution time
+            execution_time = time.time() - start_time
 
-            context_verification, conclusion = self.planner.extract_conclusion(
-                verification
-            )
-
-            if self.config.verbose:
-                logger.info(f"🤖 Verification:")
-                logger.info(f"Analysis: {context_verification}")
-                logger.info(f"Conclusion: {conclusion}")
-
-            if conclusion == "STOP":
-                logger.info("Task verification complete - stopping execution")
-                break
-
-        # Generate final output
-        logger.debug("Generating final output...")
-        final_output = await self.planner.generate_final_output(
-            task, context, self.memory
-        )
-        result.update(
-            {
+            # Prepare result
+            result = {
+                "task": task,
+                "analysis": task_analysis,
+                "step_count": 1,  # For now, we're only doing one step
+                "execution_time": execution_time,
                 "final_output": final_output,
-                "memory": self.memory.get_actions(),
-                "step_count": step_count,
-                "execution_time": round(time.time() - start_time, 2),
             }
-        )
 
-        if self.config.verbose:
-            logger.info(f"✅ Task Complete!")
-            logger.info(f"Time: {result['execution_time']}s")
-            logger.info(f"Steps: {step_count}")
-            logger.info(f"\nFinal Output:\n{final_output}")
+            return result
 
-        logger.info("Task execution completed successfully")
-        return result
+        except Exception as e:
+            logger.error(f"Error executing task: {str(e)}", exc_info=True)
+            raise
