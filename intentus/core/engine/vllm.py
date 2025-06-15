@@ -3,12 +3,16 @@
 try:
     import vllm
 except ImportError:
-    raise ImportError("If you'd like to use VLLM models, please install the vllm package by running `pip install vllm`.")
+    raise ImportError(
+        "If you'd like to use VLLM models, please install the vllm package by running `pip install vllm`."
+    )
 
 try:
     from openai import OpenAI
 except ImportError:
-    raise ImportError("If you'd like to use VLLM models, please install the openai package by running `pip install openai`.")
+    raise ImportError(
+        "If you'd like to use VLLM models, please install the openai package by running `pip install openai`."
+    )
 
 import os
 import json
@@ -18,6 +22,7 @@ from typing import List, Union
 
 from .base import EngineLM, CachedEngine
 
+
 class ChatVLLM(EngineLM, CachedEngine):
     DEFAULT_SYSTEM_PROMPT = "You are a helpful, creative, and smart assistant."
 
@@ -25,9 +30,10 @@ class ChatVLLM(EngineLM, CachedEngine):
         self,
         model_string="Qwen/Qwen2.5-VL-3B-Instruct",
         system_prompt=DEFAULT_SYSTEM_PROMPT,
-        is_multimodal: bool=False,
-        use_cache: bool=True,
-        **kwargs):
+        is_multimodal: bool = False,
+        use_cache: bool = True,
+        **kwargs,
+    ):
         """
         :param model_string:
         :param system_prompt:
@@ -40,36 +46,51 @@ class ChatVLLM(EngineLM, CachedEngine):
         self.is_multimodal = is_multimodal
 
         if self.use_cache:
-            root = platformdirs.user_cache_dir("octotools")
+            root = platformdirs.user_cache_dir("core")
             cache_path = os.path.join(root, f"cache_vllm_{self.model_string}.db")
             self.image_cache_dir = os.path.join(root, "image_cache")
             os.makedirs(self.image_cache_dir, exist_ok=True)
             super().__init__(cache_path=cache_path)
-        
+
         try:
             self.client = OpenAI(
                 base_url="http://localhost:8888/v1",
                 api_key="dummy-token",
             )
         except Exception as e:
-            raise ValueError(f"Failed to connect to VLLM server. Please ensure the server is running and try again. Please ensure that the model is running at localhost:8888.")
+            raise ValueError(
+                f"Failed to connect to VLLM server. Please ensure the server is running and try again. Please ensure that the model is running at localhost:8888."
+            )
 
         if self.client.models.list().data[0].id != self.model_string:
-            raise ValueError(f"The VLLM server is running, but the model {self.model_string} is not available. Please check the model name and try again.")
+            raise ValueError(
+                f"The VLLM server is running, but the model {self.model_string} is not available. Please check the model name and try again."
+            )
 
-
-    def generate(self, content: Union[str, List[Union[str, bytes]]], system_prompt=None, **kwargs):
+    def generate(
+        self, content: Union[str, List[Union[str, bytes]]], system_prompt=None, **kwargs
+    ):
         if isinstance(content, str):
             return self._generate_text(content, system_prompt=system_prompt, **kwargs)
-        
+
         elif isinstance(content, list):
-            if (not self.is_multimodal):
-                raise NotImplementedError(f"Multimodal generation is only supported for {self.model_string}.")
-            
-            return self._generate_multimodal(content, system_prompt=system_prompt, **kwargs)
-        
+            if not self.is_multimodal:
+                raise NotImplementedError(
+                    f"Multimodal generation is only supported for {self.model_string}."
+                )
+
+            return self._generate_multimodal(
+                content, system_prompt=system_prompt, **kwargs
+            )
+
     def _generate_text(
-        self, prompt, system_prompt=None, temperature=0, max_tokens=4000, top_p=0.99, response_format=None
+        self,
+        prompt,
+        system_prompt=None,
+        temperature=0,
+        max_tokens=4000,
+        top_p=0.99,
+        response_format=None,
     ):
 
         sys_prompt_arg = system_prompt if system_prompt else self.system_prompt
@@ -79,7 +100,6 @@ class ChatVLLM(EngineLM, CachedEngine):
             cache_or_none = self._check_cache(cache_key)
             if cache_or_none is not None:
                 return cache_or_none
-        
 
         # Chat models without structured outputs
         response = self.client.chat.completions.create(
@@ -108,24 +128,27 @@ class ChatVLLM(EngineLM, CachedEngine):
         formatted_content = []
         for item in content:
             if isinstance(item, bytes):
-                base64_image = base64.b64encode(item).decode('utf-8')
-                formatted_content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{base64_image}"
+                base64_image = base64.b64encode(item).decode("utf-8")
+                formatted_content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
                     }
-                })
+                )
             elif isinstance(item, str):
-                formatted_content.append({
-                    "type": "text",
-                    "text": item
-                })
+                formatted_content.append({"type": "text", "text": item})
             else:
                 raise ValueError(f"Unsupported input type: {type(item)}")
         return formatted_content
 
     def _generate_multimodal(
-        self, content: List[Union[str, bytes]], system_prompt=None, temperature=0, max_tokens=4000, top_p=0.99, response_format=None
+        self,
+        content: List[Union[str, bytes]],
+        system_prompt=None,
+        temperature=0,
+        max_tokens=4000,
+        top_p=0.99,
+        response_format=None,
     ):
         sys_prompt_arg = system_prompt if system_prompt else self.system_prompt
         formatted_content = self._format_content(content)
@@ -135,7 +158,6 @@ class ChatVLLM(EngineLM, CachedEngine):
             cache_or_none = self._check_cache(cache_key)
             if cache_or_none is not None:
                 return cache_or_none
-
 
         response = self.client.chat.completions.create(
             model=self.model_string,

@@ -8,7 +8,9 @@ try:
     from google import genai
     from google.genai import types
 except ImportError:
-    raise ImportError("If you'd like to use Gemini models, please install the google-genai package by running `pip install google-genai`, and add 'GOOGLE_API_KEY' to your environment variables.")
+    raise ImportError(
+        "If you'd like to use Gemini models, please install the google-genai package by running `pip install google-genai`, and add 'GOOGLE_API_KEY' to your environment variables."
+    )
 
 import os
 import platformdirs
@@ -25,15 +27,16 @@ from .engine_utils import get_image_type_from_bytes
 import io
 from PIL import Image
 
+
 class ChatGemini(EngineLM, CachedEngine):
     SYSTEM_PROMPT = "You are a helpful, creative, and smart assistant."
 
     def __init__(
         self,
         model_string="gemini-pro",
-        use_cache: bool=False,
+        use_cache: bool = False,
         system_prompt=SYSTEM_PROMPT,
-        is_multimodal: bool=False,
+        is_multimodal: bool = False,
     ):
         self.use_cache = use_cache
         self.model_string = model_string
@@ -42,33 +45,48 @@ class ChatGemini(EngineLM, CachedEngine):
         self.is_multimodal = is_multimodal
 
         if self.use_cache:
-            root = platformdirs.user_cache_dir("octotools")
+            root = platformdirs.user_cache_dir("core")
             cache_path = os.path.join(root, f"cache_gemini_{model_string}.db")
             super().__init__(cache_path=cache_path)
-            
-        if os.getenv("GOOGLE_API_KEY") is None:
-            raise ValueError("Please set the GOOGLE_API_KEY environment variable if you'd like to use Gemini models.")
-        
-        self.client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
+        if os.getenv("GOOGLE_API_KEY") is None:
+            raise ValueError(
+                "Please set the GOOGLE_API_KEY environment variable if you'd like to use Gemini models."
+            )
+
+        self.client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
     def __call__(self, prompt, **kwargs):
         return self.generate(prompt, **kwargs)
 
     @retry(wait=wait_random_exponential(min=1, max=5), stop=stop_after_attempt(5))
-    def generate(self, content: Union[str, List[Union[str, bytes]]], system_prompt=None, **kwargs):
+    def generate(
+        self, content: Union[str, List[Union[str, bytes]]], system_prompt=None, **kwargs
+    ):
         if isinstance(content, str):
-            return self._generate_from_single_prompt(content, system_prompt=system_prompt, **kwargs)
-        
+            return self._generate_from_single_prompt(
+                content, system_prompt=system_prompt, **kwargs
+            )
+
         elif isinstance(content, list):
             has_multimodal_input = any(isinstance(item, bytes) for item in content)
             if (has_multimodal_input) and (not self.is_multimodal):
-                raise NotImplementedError("Multimodal generation is only supported for Gemini Pro Vision.")
-            
-            return self._generate_from_multiple_input(content, system_prompt=system_prompt, **kwargs)
+                raise NotImplementedError(
+                    "Multimodal generation is only supported for Gemini Pro Vision."
+                )
+
+            return self._generate_from_multiple_input(
+                content, system_prompt=system_prompt, **kwargs
+            )
 
     def _generate_from_single_prompt(
-        self, prompt: str, system_prompt=None, temperature=0, max_tokens=2000, top_p=0.99, **kwargs
+        self,
+        prompt: str,
+        system_prompt=None,
+        temperature=0,
+        max_tokens=2000,
+        top_p=0.99,
+        **kwargs,
     ):
         sys_prompt_arg = system_prompt if system_prompt else self.system_prompt
 
@@ -87,8 +105,8 @@ class ChatGemini(EngineLM, CachedEngine):
                 max_output_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
-                candidate_count=1
-            )
+                candidate_count=1,
+            ),
         )
         response_text = response.text
 
@@ -109,7 +127,13 @@ class ChatGemini(EngineLM, CachedEngine):
         return formatted_content
 
     def _generate_from_multiple_input(
-        self, content: List[Union[str, bytes]], system_prompt=None, temperature=0, max_tokens=4000, top_p=0.99, **kwargs
+        self,
+        content: List[Union[str, bytes]],
+        system_prompt=None,
+        temperature=0,
+        max_tokens=4000,
+        top_p=0.99,
+        **kwargs,
     ):
         sys_prompt_arg = system_prompt if system_prompt else self.system_prompt
         formatted_content = self._format_content(content)
@@ -128,8 +152,8 @@ class ChatGemini(EngineLM, CachedEngine):
                 max_output_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
-                candidate_count=1
-            )
+                candidate_count=1,
+            ),
         )
         response_text = response.text
 

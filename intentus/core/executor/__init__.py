@@ -4,8 +4,8 @@ import re
 from typing import Dict, Any, List
 from datetime import datetime
 
-from octotools.engine.factory import create_llm_engine
-from octotools.models.formatters import ToolCommand
+from core.engine.factory import create_llm_engine
+from core.models.formatters import ToolCommand
 
 import signal
 from typing import Dict, Any, List, Optional

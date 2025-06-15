@@ -3,11 +3,11 @@ import time
 import json
 from typing import Optional
 
-from octotools.models.initializer import Initializer
-from octotools.models.planner import Planner
-from octotools.models.memory import Memory
-from octotools.models.executor import Executor
-from octotools.models.utils import make_json_serializable_truncated
+from core.models.initializer import Initializer
+from core.models.planner import Planner
+from core.models.memory import Memory
+from core.models.executor import Executor
+from core.models.utils import make_json_serializable_truncated
 
 
 class Solver:
@@ -270,7 +270,7 @@ def construct_solver(
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="Run the octotools demo with specified parameters."
+        description="Run the core demo with specified parameters."
     )
     parser.add_argument("--llm_engine_name", default="gpt-4o", help="LLM engine name.")
     parser.add_argument(

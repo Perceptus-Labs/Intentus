@@ -23,7 +23,7 @@ class Initializer:
         self.verbose = verbose
         self.vllm_server_process = None
         self.vllm_config_path = vllm_config_path
-        print("\n==> Initializing octotools...")
+        print("\n==> Initializing core...")
         print(f"Enabled tools: {self.enabled_tools}")
         print(f"LLM engine name: {self.model_string}")
         self._set_up_tools()
@@ -35,8 +35,8 @@ class Initializer:
     def get_project_root(self):
         current_dir = os.path.dirname(os.path.abspath(__file__))
         while current_dir != "/":
-            if os.path.exists(os.path.join(current_dir, "octotools")):
-                return os.path.join(current_dir, "octotools")
+            if os.path.exists(os.path.join(current_dir, "core")):
+                return os.path.join(current_dir, "core")
             current_dir = os.path.dirname(current_dir)
         raise Exception("Could not find project root")
 
@@ -44,14 +44,14 @@ class Initializer:
         # Implementation of load_tools_and_get_metadata function
         print("Loading tools and getting metadata...")
         self.toolbox_metadata = {}
-        octotools_dir = self.get_project_root()
-        tools_dir = os.path.join(octotools_dir, "tools")
-        # print(f"octotools directory: {octotools_dir}")
+        core_dir = self.get_project_root()
+        tools_dir = os.path.join(core_dir, "tools")
+        # print(f"core directory: {core_dir}")
         # print(f"Tools directory: {tools_dir}")
 
-        # Add the octotools directory and its parent to the Python path
-        sys.path.insert(0, octotools_dir)
-        sys.path.insert(0, os.path.dirname(octotools_dir))
+        # Add the core directory and its parent to the Python path
+        sys.path.insert(0, core_dir)
+        sys.path.insert(0, os.path.dirname(core_dir))
         print(f"Updated Python path: {sys.path}")
 
         if not os.path.exists(tools_dir):
@@ -66,7 +66,7 @@ class Initializer:
                 file = "tool.py"
                 module_path = os.path.join(root, file)
                 module_name = os.path.splitext(file)[0]
-                relative_path = os.path.relpath(module_path, octotools_dir)
+                relative_path = os.path.relpath(module_path, core_dir)
                 import_path = ".".join(os.path.split(relative_path)).replace(
                     os.sep, "."
                 )[:-3]

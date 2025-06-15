@@ -2,7 +2,7 @@ import os
 import requests
 from typing import List, Dict, Any
 
-from octotools.tools.base import BaseTool
+from core.tools.base import BaseTool
 
 from dotenv import load_dotenv
 
@@ -109,7 +109,7 @@ if __name__ == "__main__":
     Run the following commands in the terminal to test the script:
 
     export GOOGLE_API_KEY=your_api_key_here
-    cd octotools/tools/google_search
+    cd core/tools/google_search
     python tool.py
     """
 
