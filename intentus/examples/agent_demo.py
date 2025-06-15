@@ -1,9 +1,12 @@
 import asyncio
-import logging
+from intentus.core.utils import setup_logging
 from intentus.core.agent import AgentConfig, IntentusAgent
 
 
 async def main():
+    # Set up logging
+    setup_logging()
+
     # Create agent configuration
     config = AgentConfig(
         llm_engine="gpt-4.1-mini",

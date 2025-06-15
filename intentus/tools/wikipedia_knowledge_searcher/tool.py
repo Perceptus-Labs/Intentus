@@ -1,13 +1,9 @@
 import os
 import wikipedia
-import logging
+from ..base import BaseTool
+import json
 from dataclasses import dataclass
-from typing import Dict, Any, List, Tuple
-
-from intentus.tools.base import BaseTool
-
-# Set up logging
-logger = logging.getLogger(__name__)
+from typing import Dict, Any, List, Tuple, Optional
 
 
 @dataclass
@@ -54,10 +50,7 @@ class Wikipedia_Knowledge_Searcher_Tool(BaseTool):
             },
         )
         self.max_length = 2000
-        # Set language to English
         wikipedia.set_lang("en")
-        # Initialize logger for this instance
-        self.logger = logging.getLogger(__name__)
 
     def search_wikipedia(self, query: str, max_length: int = 2000) -> Dict[str, Any]:
         """
@@ -109,7 +102,7 @@ class Wikipedia_Knowledge_Searcher_Tool(BaseTool):
                 "content": f"Error searching Wikipedia: {str(e)}",
             }
 
-    def execute(self, command: str) -> Dict[str, Any]:
+    async def execute(self, command: str) -> Dict[str, Any]:
         """
         Execute the Wikipedia search tool.
 

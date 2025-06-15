@@ -6,6 +6,9 @@ from typing import Dict, Any, List, Optional
 from ..engine.factory import create_llm_engine
 from ..memory import Memory
 
+# Initialize logger
+logger = logging.getLogger(__name__)
+
 
 class Executor:
     """Executor class for Intentus agent."""
@@ -22,6 +25,7 @@ class Executor:
         self.toolbox_metadata = toolbox_metadata
         self.available_tools = available_tools
         self.verbose = verbose
+        self.logger = logger
 
     async def execute_step(
         self, context: str, subgoal: str, tool: str, memory: Memory
@@ -50,10 +54,10 @@ class Executor:
 
     async def generate_tool_command(self, context: str, subgoal: str, tool: str) -> str:
         """Generate a command for the specified tool."""
-        logger.debug(f"Generating command for tool: {tool}")
-        logger.debug(f"Context: {context}")
-        logger.debug(f"Subgoal: {subgoal}")
-        logger.debug(f"Tool metadata: {self.toolbox_metadata[tool]}")
+        self.logger.debug(f"Generating command for tool: {tool}")
+        self.logger.debug(f"Context: {context}")
+        self.logger.debug(f"Subgoal: {subgoal}")
+        self.logger.debug(f"Tool metadata: {self.toolbox_metadata[tool]}")
 
         prompt = f"""
 Task: Generate a command for the {tool} tool based on the given context and subgoal.
@@ -69,17 +73,21 @@ Instructions:
 3. Ensure the command follows the tool's requirements and best practices.
 
 Response Format:
-Your response MUST follow this structure:
-1. Analysis: Explain your reasoning for the command.
-2. Command: The actual command to execute.
+Your response MUST be a JSON object with exactly these fields:
+{{
+    "analysis": "Your analysis of how to use the tool",
+    "command": "The actual command to execute"
+}}
 
 Rules:
 - The command MUST be valid for the specified tool.
 - The command MUST be specific and actionable.
 - The command MUST help achieve the subgoal.
+- The command MUST be a simple keyword or search term for Wikipedia searches.
+- DO NOT include any explanatory text outside the JSON object.
 """
 
-        logger.debug("Calling LLM engine for command generation")
+        self.logger.debug("Calling LLM engine for command generation")
         response = await self.llm_engine(
             prompt,
             response_format={
@@ -97,24 +105,27 @@ Rules:
                 },
             },
         )
-        logger.debug(f"Raw LLM response: {response}")
+        self.logger.debug(f"Raw LLM response: {response}")
 
         if isinstance(response, dict):
-            logger.debug(
-                f"Response is dict, extracting command: {response.get('command', '')}"
-            )
-            return response["command"]
+            command = response.get("command", "").strip()
+            self.logger.debug(f"Extracted command from dict: '{command}'")
+            if not command:
+                raise ValueError("Empty command generated")
+            return command
         else:
             # Parse the response to extract the command
-            logger.debug("Response is not dict, parsing as string")
-            lines = str(response).split("\n")
-            command = ""
-            for line in lines:
-                if line.startswith("Command:"):
-                    command = line.replace("Command:", "").strip()
-                    logger.debug(f"Found command: {command}")
-                    break
-            return command
+            self.logger.debug("Response is not dict, parsing as string")
+            try:
+                data = json.loads(str(response))
+                command = data.get("command", "").strip()
+                self.logger.debug(f"Extracted command from JSON string: '{command}'")
+                if not command:
+                    raise ValueError("Empty command generated")
+                return command
+            except json.JSONDecodeError:
+                self.logger.error("Failed to parse response as JSON")
+                raise ValueError("Invalid response format")
 
     async def execute_tool_command(self, tool: str, command: str) -> Any:
         """Execute a command using the specified tool."""

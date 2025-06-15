@@ -1,3 +1,29 @@
+import logging
+import colorlog
+
+
+def setup_logging():
+    """Set up colored logging for the entire application."""
+    handler = colorlog.StreamHandler()
+    handler.setFormatter(
+        colorlog.ColoredFormatter(
+            "%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            log_colors={
+                "DEBUG": "green",
+                "INFO": "blue",
+                "WARNING": "yellow",
+                "ERROR": "red",
+                "CRITICAL": "red,bg_white",
+            },
+        )
+    )
+
+    # Get the root logger and set its level
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+    root_logger.addHandler(handler)
+
+
 def make_json_serializable(obj):
     if isinstance(obj, (str, int, float, bool, type(None))):
         return obj
