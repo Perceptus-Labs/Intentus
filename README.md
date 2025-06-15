@@ -19,38 +19,45 @@ pip install -e .
 
 ## Usage
 
-Here's a basic example of how to use Intentus:
+Here's a basic example of how to use Intentus from the example script in the `intentus/examples` directory:
 
 ```python
 import asyncio
-from intentus.core.agent import CoreConfig, IntentusAgent
+from intentus.core.utils import setup_logging
+from intentus.core.agent import AgentConfig, IntentusAgent
+
 
 async def main():
-    # Create agent configuration
-    config = CoreConfig(
-        llm_engine="gpt-4.1-mini",
-        enabled_tools=["web_search", "calculator"],
-        max_steps=5,
-        max_time=60,
-        verbose=True
-    )
-    
-    # Initialize agent
-    agent = IntentusAgent(config)
-    
-    # Run a task
-    result = await agent.run(
-        task="What is the population of Tokyo?",
-        context={
-            "require_accuracy": True,
-            "preferred_currency": "USD"
-        }
-    )
-    
-    print(f"Final output: {result['final_output']}")
+    # Set up logging
+    setup_logging()
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    # Create agent configuration
+    config = AgentConfig(
+        llm_engine="gpt-4.1-mini",
+        enabled_tools=["Wikipedia_Knowledge_Searcher_Tool"],
+        verbose=True,
+        max_steps=5,
+        temperature=0.7,
+    )
+
+    # Create agent
+    agent = IntentusAgent(config)
+
+    # Run agent
+    result = await agent.run(question="What is the capital of France?", image=None)
+
+    # Print results
+    print("\nQuery Analysis:")
+    print(result["query_analysis"])
+    print("\nBase Response:")
+    print(result["base_response"])
+    print("\nFinal Output:")
+    print(result["final_output"])
+    print("\nExecution Time:", result["execution_time"])
+    print("Steps Taken:", result["steps_taken"])
+    print("\nMemory:")
+    for action in result["memory"]:
+        print(f"- {action}")
 ```
 
 ## Features
@@ -66,7 +73,7 @@ if __name__ == "__main__":
 To run the example:
 
 ```bash
-python examples/agent_demo.py
+python intentus/examples/agent_demo.py
 ```
 
 This will:
