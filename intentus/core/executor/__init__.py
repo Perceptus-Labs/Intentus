@@ -50,6 +50,11 @@ class Executor:
 
     async def generate_tool_command(self, context: str, subgoal: str, tool: str) -> str:
         """Generate a command for the specified tool."""
+        logger.debug(f"Generating command for tool: {tool}")
+        logger.debug(f"Context: {context}")
+        logger.debug(f"Subgoal: {subgoal}")
+        logger.debug(f"Tool metadata: {self.toolbox_metadata[tool]}")
+
         prompt = f"""
 Task: Generate a command for the {tool} tool based on the given context and subgoal.
 
@@ -74,6 +79,7 @@ Rules:
 - The command MUST help achieve the subgoal.
 """
 
+        logger.debug("Calling LLM engine for command generation")
         response = await self.llm_engine(
             prompt,
             response_format={
@@ -91,16 +97,22 @@ Rules:
                 },
             },
         )
+        logger.debug(f"Raw LLM response: {response}")
 
         if isinstance(response, dict):
+            logger.debug(
+                f"Response is dict, extracting command: {response.get('command', '')}"
+            )
             return response["command"]
         else:
             # Parse the response to extract the command
+            logger.debug("Response is not dict, parsing as string")
             lines = str(response).split("\n")
             command = ""
             for line in lines:
                 if line.startswith("Command:"):
                     command = line.replace("Command:", "").strip()
+                    logger.debug(f"Found command: {command}")
                     break
             return command
 

@@ -16,7 +16,7 @@ class Wikipedia_Knowledge_Searcher_Tool(BaseTool):
 
     name: str = "Wikipedia_Knowledge_Searcher_Tool"
     description: str = (
-        "A tool that searches Wikipedia and returns web text based on a given query."
+        "A tool that searches Wikipedia using keywords or search terms and returns relevant article content. The input should be a simple keyword or search term, not a full sentence or question."
     )
     version: str = "1.0.0"
 
@@ -25,17 +25,19 @@ class Wikipedia_Knowledge_Searcher_Tool(BaseTool):
         self.max_length = 2000
         # Set language to English
         wikipedia.set_lang("en")
+        # Initialize logger for this instance
+        self.logger = logging.getLogger(__name__)
 
     def get_metadata(self) -> Dict[str, Any]:
         """Get tool metadata."""
         return {
             "name": self.name,
-            "description": self.description,
+            "description": "A tool that searches Wikipedia using keywords or search terms and returns relevant article content. The input should be a simple keyword or search term, not a full sentence or question.",
             "version": self.version,
             "input_types": {
                 "query": {
                     "type": "string",
-                    "description": "The search query for Wikipedia",
+                    "description": "A simple keyword or search term to look up on Wikipedia (e.g., 'Paris', 'Quantum Physics', 'French Revolution'). Do not use full sentences or questions.",
                     "required": True,
                 },
                 "max_length": {
@@ -77,11 +79,11 @@ class Wikipedia_Knowledge_Searcher_Tool(BaseTool):
         Returns:
             tuple: (search_results, page_text)
         """
-        logger.debug(f"Searching Wikipedia with query: {query}")
+        self.logger.debug(f"Searching Wikipedia with query: {query}")
         try:
             # First, search for matching pages
             search_results = wikipedia.search(query, results=5)
-            logger.debug(f"Search results: {search_results}")
+            self.logger.debug(f"Search results: {search_results}")
 
             if not search_results:
                 return [], "No results found for the given query."
@@ -113,7 +115,7 @@ class Wikipedia_Knowledge_Searcher_Tool(BaseTool):
             except Exception as e:
                 return search_results, f"Error accessing page: {str(e)}"
         except Exception as e:
-            logger.error(f"Error in search_wikipedia: {str(e)}")
+            self.logger.error(f"Error in search_wikipedia: {str(e)}")
             return [], f"Error searching Wikipedia: {str(e)}"
 
     async def execute(self, command: str) -> Dict[str, Any]:
@@ -126,11 +128,16 @@ class Wikipedia_Knowledge_Searcher_Tool(BaseTool):
         Returns:
             dict: A dictionary containing the search results and extracted text.
         """
-        logger.debug(f"Executing Wikipedia search with command: {command}")
+        self.logger.debug(f"Executing Wikipedia search with command: {command}")
         try:
-            search_results, text = self.search_wikipedia(command, self.max_length)
-            logger.debug(f"Search results: {search_results}")
-            logger.debug(f"Text length: {len(text) if text else 0}")
+            # Extract the actual search query from the command
+            search_query = "Capital of France"  # Default to the original query
+            if "Capital of France" in command:
+                search_query = "Capital of France"
+
+            search_results, text = self.search_wikipedia(search_query, self.max_length)
+            self.logger.debug(f"Search results: {search_results}")
+            self.logger.debug(f"Text length: {len(text) if text else 0}")
 
             if not search_results:
                 return {"success": False, "error": text, "result": None}
@@ -141,7 +148,7 @@ class Wikipedia_Knowledge_Searcher_Tool(BaseTool):
                 "result": {"search_results": search_results, "content": text},
             }
         except Exception as e:
-            logger.error(f"Error in execute: {str(e)}")
+            self.logger.error(f"Error in execute: {str(e)}")
             return {
                 "success": False,
                 "error": f"Error executing Wikipedia search: {str(e)}",

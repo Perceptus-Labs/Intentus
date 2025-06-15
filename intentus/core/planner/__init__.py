@@ -137,12 +137,19 @@ Please present your analysis in a clear, structured format.
         try:
             # If response is already a dict, use it directly
             if isinstance(response, dict):
+                logger.debug("Response is already a dict")
                 data = response
             else:
                 # Try to parse as JSON
+                logger.debug("Attempting to parse response as JSON")
                 import json
 
-                data = json.loads(str(response))
+                try:
+                    data = json.loads(str(response))
+                    logger.debug("Successfully parsed response as JSON")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse response as JSON: {str(e)}")
+                    raise
 
             logger.debug(f"Parsed data: {data}")
 
@@ -161,20 +168,28 @@ Please present your analysis in a clear, structured format.
         except Exception as e:
             logger.error(f"Error parsing response: {str(e)}")
             # Fallback to old string parsing method
+            logger.debug("Falling back to string parsing method")
             lines = str(response).split("\n")
+            logger.debug(f"Split response into {len(lines)} lines")
+
             context = ""
             subgoal = ""
             tool = ""
 
             for line in lines:
+                logger.debug(f"Processing line: {line}")
                 if line.startswith("Context:"):
                     context = line.replace("Context:", "").strip()
+                    logger.debug(f"Found context: {context}")
                 elif line.startswith("Sub-Goal:"):
                     subgoal = line.replace("Sub-Goal:", "").strip()
+                    logger.debug(f"Found subgoal: {subgoal}")
                 elif line.startswith("Tool:"):
                     tool = line.replace("Tool:", "").strip()
+                    logger.debug(f"Found tool: {tool}")
                 elif line.startswith("Tool Name:"):
                     tool = line.replace("Tool Name:", "").strip()
+                    logger.debug(f"Found tool: {tool}")
 
             logger.debug(f"Fallback extracted values:")
             logger.debug(f"Context: '{context}'")
@@ -360,21 +375,53 @@ Rules:
         """Extract analysis and conclusion from verification response."""
         logger.debug(f"Extracting conclusion from response: {response}")
 
-        # Parse the response to extract analysis and conclusion
-        lines = str(response).split("\n")
-        analysis = ""
-        conclusion = ""
+        try:
+            # If response is already a dict, use it directly
+            if isinstance(response, dict):
+                logger.debug("Response is already a dict")
+                data = response
+            else:
+                # Try to parse as JSON
+                logger.debug("Attempting to parse response as JSON")
+                import json
 
-        for line in lines:
-            if line.startswith("Analysis:"):
-                analysis = line.replace("Analysis:", "").strip()
-            elif line.startswith("Conclusion:"):
-                conclusion = line.replace("Conclusion:", "").strip()
+                try:
+                    data = json.loads(str(response))
+                    logger.debug("Successfully parsed response as JSON")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse response as JSON: {str(e)}")
+                    raise
 
-        logger.debug(f"Extracted analysis: {analysis}")
-        logger.debug(f"Extracted conclusion: {conclusion}")
+            logger.debug(f"Parsed data: {data}")
 
-        return analysis, conclusion
+            # Extract values from the parsed data
+            analysis = data.get("analysis", "")
+            conclusion = data.get("stop_signal", "")
+
+            logger.debug(f"Extracted analysis: {analysis}")
+            logger.debug(f"Extracted conclusion: {conclusion}")
+
+            return analysis, conclusion
+
+        except Exception as e:
+            logger.error(f"Error parsing response: {str(e)}")
+            # Fallback to old string parsing method
+            logger.debug("Falling back to string parsing method")
+            lines = str(response).split("\n")
+            analysis = ""
+            conclusion = ""
+
+            for line in lines:
+                if line.startswith("Analysis:"):
+                    analysis = line.replace("Analysis:", "").strip()
+                elif line.startswith("Conclusion:"):
+                    conclusion = line.replace("Conclusion:", "").strip()
+
+            logger.debug(f"Fallback extracted values:")
+            logger.debug(f"Analysis: '{analysis}'")
+            logger.debug(f"Conclusion: '{conclusion}'")
+
+            return analysis, conclusion
 
     async def generate_final_output(
         self, question: str, image: str, memory: Memory
