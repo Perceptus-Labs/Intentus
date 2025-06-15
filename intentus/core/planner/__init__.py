@@ -51,13 +51,14 @@ class Planner:
         return self.base_response
 
     async def analyze_query(self, question: str, image: str) -> str:
-        """Analyze the query and determine the required tools and skills."""
-        image_info = self.get_image_info(image)
-
-        prompt_analyze_query = f"""
+        """Analyze the query and determine required skills."""
+        input_data = [
+            {
+                "role": "user",
+                "content": f"""
 Task: Analyze the given query with accompanying inputs and determine the skills and tools needed to address it effectively.
 
-Image: {image_info}
+Image: {image}
 
 Query: {question}
 
@@ -73,32 +74,29 @@ Your response should include:
 3. Any additional considerations that might be important for addressing the query effectively.
 
 Please present your analysis in a clear, structured format.
-"""
-        input_data = [prompt_analyze_query]
-        if image_info:
-            try:
-                with open(image_info["image_path"], "rb") as file:
-                    image_bytes = file.read()
-                input_data.append(image_bytes)
-            except Exception as e:
-                print(f"Error reading image file: {str(e)}")
+""",
+            }
+        ]
 
         response = await self.llm_engine(
             input_data,
             response_format={
                 "type": "json_schema",
                 "json_schema": {
-                    "type": "object",
-                    "properties": {
-                        "concise_summary": {"type": "string"},
-                        "required_skills": {"type": "string"},
-                        "additional_considerations": {"type": "string"},
+                    "name": "QueryAnalysis",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "concise_summary": {"type": "string"},
+                            "required_skills": {"type": "string"},
+                            "additional_considerations": {"type": "string"},
+                        },
+                        "required": [
+                            "concise_summary",
+                            "required_skills",
+                            "additional_considerations",
+                        ],
                     },
-                    "required": [
-                        "concise_summary",
-                        "required_skills",
-                        "additional_considerations",
-                    ],
                 },
             },
         )

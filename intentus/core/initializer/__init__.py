@@ -5,6 +5,7 @@ import inspect
 import traceback
 from typing import Dict, Any, List, Tuple
 import time
+from intentus.tools.base import BaseTool
 
 
 class Initializer:

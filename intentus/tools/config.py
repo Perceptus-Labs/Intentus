@@ -40,14 +40,6 @@ class ToolboxConfig:
     tool_configs: Dict[str, ToolConfig] = field(default_factory=dict)
     custom_tool_paths: List[Path] = field(default_factory=list)
 
-    def __post_init__(self):
-        # Ensure tools directory exists
-        self.tools_dir.mkdir(parents=True, exist_ok=True)
-
-        # Ensure custom tool paths exist
-        for path in self.custom_tool_paths:
-            path.mkdir(parents=True, exist_ok=True)
-
     def get_tool_config(self, tool_name: str) -> ToolConfig:
         """Get configuration for a specific tool."""
         return self.tool_configs.get(tool_name, ToolConfig())
