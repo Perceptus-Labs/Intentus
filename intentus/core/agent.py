@@ -69,31 +69,30 @@ class IntentusAgent:
         logger.info("IntentusAgent initialized successfully")
 
     def _initialize_components(self):
-        """Initialize all core components."""
+        """Initialize core components."""
         # Initialize LLM engine
-        self.llm_engine = create_llm_engine(self.config.core.llm.engine)
+        self.llm_engine = create_llm_engine(self.config.core.llm)
 
-        # Initialize Planner
-        self.planner = Planner(
-            llm_engine_name=self.config.core.llm.engine,
+        # Initialize tools
+        self.initializer = Initializer(
+            enabled_tools=self.config.toolbox.enabled_tools,
+            llm_engine=self.config.core.llm.engine,
             verbose=self.config.core.verbose,
         )
 
-        # Initialize Memory
+        # Initialize planner
+        self.planner = Planner(
+            llm_engine=self.llm_engine, config=self.config.core.planner
+        )
+
+        # Initialize memory
         self.memory = Memory()
 
-        # Initialize Executor
+        # Initialize executor
         self.executor = Executor(
             llm_engine_name=self.config.core.llm.engine,
             root_cache_dir=str(self.config.core.executor.cache_dir),
             max_time=self.config.core.executor.timeout,
-            verbose=self.config.core.verbose,
-        )
-
-        # Initialize Initializer
-        self.initializer = Initializer(
-            enabled_tools=self.config.toolbox.enabled_tools,
-            llm_engine=self.config.core.llm.engine,
             verbose=self.config.core.verbose,
         )
 

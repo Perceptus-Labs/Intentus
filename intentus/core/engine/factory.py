@@ -1,85 +1,80 @@
-from typing import Any
+from typing import Any, List, Optional
+from ..config import LLMConfig
+from openai import AsyncOpenAI
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 
-def create_llm_engine(
-    model_string: str, use_cache: bool = False, is_multimodal: bool = True, **kwargs
-) -> Any:
-    """
-    Factory function to create appropriate LLM engine instance.
-    """
-    if any(x in model_string for x in ["gpt", "o1", "o3", "o4"]):
-        from .openai import ChatOpenAI
+def create_llm_engine(config: LLMConfig) -> Any:
+    """Create an LLM engine instance based on the configuration."""
+    model_string = config.engine.lower()
 
-        return ChatOpenAI(
-            model_string=model_string,
-            use_cache=use_cache,
-            is_multimodal=is_multimodal,
-            **kwargs,
-        )
+    if model_string.startswith("together-"):
+        from .together import TogetherEngine
 
-    elif "claude" in model_string:
-        from .anthropic import ChatAnthropic
+        return TogetherEngine(config)
+    elif model_string.startswith("vllm-"):
+        from .vllm import VLLMEngine
 
-        return ChatAnthropic(
-            model_string=model_string,
-            use_cache=use_cache,
-            is_multimodal=is_multimodal,
-            **kwargs,
-        )
-
-    elif any(x in model_string for x in ["deepseek-chat", "deepseek-reasoner"]):
-        from .deepseek import ChatDeepseek
-
-        return ChatDeepseek(
-            model_string=model_string,
-            use_cache=use_cache,
-            is_multimodal=is_multimodal,
-            **kwargs,
-        )
-
-    elif "gemini" in model_string:
-        from .gemini import ChatGemini
-
-        return ChatGemini(
-            model_string=model_string,
-            use_cache=use_cache,
-            is_multimodal=is_multimodal,
-            **kwargs,
-        )
-
-    elif "grok" in model_string:
-        from .xai import ChatGrok
-
-        return ChatGrok(
-            model_string=model_string,
-            use_cache=use_cache,
-            is_multimodal=is_multimodal,
-            **kwargs,
-        )
-
-    elif "vllm" in model_string:
-        from .vllm import ChatVLLM
-
-        model_string = model_string.replace("vllm-", "")
-        return ChatVLLM(
-            model_string=model_string,
-            use_cache=use_cache,
-            is_multimodal=is_multimodal,
-            **kwargs,
-        )
-
-    elif "together" in model_string:
-        from .together import ChatTogether
-
-        model_string = model_string.replace("together-", "")
-        return ChatTogether(
-            model_string=model_string,
-            use_cache=use_cache,
-            is_multimodal=is_multimodal,
-            **kwargs,
-        )
-
+        return VLLMEngine(config)
     else:
-        raise ValueError(
-            f"Engine {model_string} not supported. If you are using Together models, please ensure have the prefix 'together-' in the model string. If you are using VLLM models, please ensure have the prefix 'vllm-' in the model string. For other custom engines, you can edit the factory.py file and add its interface file to add support for your engine. Your pull request will be warmly welcomed!"
+        return MockLLMEngine(config)
+
+
+class MockLLMEngine:
+    """Mock LLM engine for development purposes."""
+
+    def __init__(self, config: LLMConfig):
+        self.config = config
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable not set")
+        self.client = AsyncOpenAI(api_key=api_key)
+
+    async def generate_response(self, prompt: str) -> str:
+        """Generate a response from the LLM."""
+        response = await self.client.chat.completions.create(
+            model=self.config.engine,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=self.config.max_tokens,
+            temperature=self.config.temperature,
         )
+        return response.choices[0].message.content
+
+    async def analyze_text(self, text: str) -> str:
+        """Analyze text using the LLM."""
+        response = await self.client.chat.completions.create(
+            model=self.config.engine,
+            messages=[{"role": "user", "content": text}],
+            max_tokens=self.config.max_tokens,
+            temperature=self.config.temperature,
+        )
+        return response.choices[0].message.content
+
+    async def __call__(
+        self, input_data: List[Any], response_format: Optional[Any] = None
+    ) -> Any:
+        """Call the LLM engine with input data and optional response format."""
+        if not input_data:
+            raise ValueError("Input data cannot be empty")
+
+        # Convert input data to string if it's a list
+        if isinstance(input_data, list):
+            prompt = (
+                input_data[0] if isinstance(input_data[0], str) else str(input_data[0])
+            )
+        else:
+            prompt = str(input_data)
+
+        response = await self.client.chat.completions.create(
+            model=self.config.engine,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=self.config.max_tokens,
+            temperature=self.config.temperature,
+            response_format=response_format,
+        )
+
+        return response.choices[0].message.content

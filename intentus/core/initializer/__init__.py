@@ -32,102 +32,65 @@ class Initializer:
         if llm_engine.startswith("vllm-"):
             self.setup_vllm_server()
 
-    def get_project_root(self):
+    def get_project_root(self) -> str:
+        """Get the project root directory."""
+        # Get the directory of the current file
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        while current_dir != "/":
-            if os.path.exists(os.path.join(current_dir, "intentus")):
-                return os.path.join(current_dir, "intentus")
+
+        # Navigate up to the intentus directory
+        while os.path.basename(
+            current_dir
+        ) != "intentus" and current_dir != os.path.dirname(current_dir):
             current_dir = os.path.dirname(current_dir)
-        raise Exception("Could not find project root")
+
+        if os.path.basename(current_dir) != "intentus":
+            raise ValueError("Could not find intentus directory")
+
+        return current_dir
 
     def load_tools_and_get_metadata(self) -> Dict[str, Any]:
-        # Implementation of load_tools_and_get_metadata function
+        """Load tools and get their metadata."""
         print("Loading tools and getting metadata...")
-        self.toolbox_metadata = {}
+
+        # Get project root and tools directory
         project_root = self.get_project_root()
-        tools_dir = os.path.join(project_root, "tools")  # Look under intentus/tools
+        tools_dir = os.path.join(project_root, "tools")
+
         print(f"Project root: {project_root}")
         print(f"Tools directory: {tools_dir}")
 
-        # Add the project root to the Python path
-        sys.path.insert(0, project_root)
-        print(f"Updated Python path: {sys.path}")
+        # Add project root to Python path
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+            print(f"Updated Python path: {sys.path}")
 
-        if not os.path.exists(tools_dir):
-            print(f"Error: Tools directory does not exist: {tools_dir}")
-            return self.toolbox_metadata
+        # Scan tools directory
+        tools_metadata = {}
+        for tool_dir in os.listdir(tools_dir):
+            tool_path = os.path.join(tools_dir, tool_dir)
+            if os.path.isdir(tool_path):
+                tool_file = os.path.join(tool_path, "tool.py")
+                if os.path.exists(tool_file):
+                    print(f"\n==> Attempting to import: tools.{tool_dir}.tool")
+                    try:
+                        module = importlib.import_module(f"tools.{tool_dir}.tool")
+                        for item_name in dir(module):
+                            item = getattr(module, item_name)
+                            if (
+                                isinstance(item, type)
+                                and issubclass(item, BaseTool)
+                                and item != BaseTool
+                            ):
+                                print(f"Found tool class: {item_name}")
+                                tool_instance = item()
+                                metadata = tool_instance.get_metadata()
+                                tools_metadata[item_name] = metadata
+                                print(f"Metadata for {item_name}: {metadata}")
+                    except Exception as e:
+                        print(f"Error importing {tool_dir}: {str(e)}")
 
-        for root, dirs, files in os.walk(tools_dir):
-            if "tool.py" in files and (
-                self.load_all or os.path.basename(root) in self.available_tools
-            ):
-                file = "tool.py"
-                module_path = os.path.join(root, file)
-                module_name = os.path.splitext(file)[0]
-                relative_path = os.path.relpath(module_path, project_root)
-                import_path = ".".join(os.path.split(relative_path)).replace(
-                    os.sep, "."
-                )[:-3]
-
-                print(f"\n==> Attempting to import: {import_path}")
-                try:
-                    module = importlib.import_module(import_path)
-                    for name, obj in inspect.getmembers(module):
-                        if (
-                            inspect.isclass(obj)
-                            and name.endswith("Tool")
-                            and name != "BaseTool"
-                        ):
-                            print(f"Found tool class: {name}")
-                            try:
-                                # Check if the tool requires an LLM engine
-                                if (
-                                    hasattr(obj, "require_llm_engine")
-                                    and obj.require_llm_engine
-                                ):
-                                    tool_instance = obj(model_string=self.llm_engine)
-                                else:
-                                    tool_instance = obj()
-
-                                self.toolbox_metadata[name] = {
-                                    "tool_name": getattr(
-                                        tool_instance, "tool_name", "Unknown"
-                                    ),
-                                    "tool_description": getattr(
-                                        tool_instance,
-                                        "tool_description",
-                                        "No description",
-                                    ),
-                                    "tool_version": getattr(
-                                        tool_instance, "tool_version", "Unknown"
-                                    ),
-                                    "input_types": getattr(
-                                        tool_instance, "input_types", {}
-                                    ),
-                                    "output_type": getattr(
-                                        tool_instance, "output_type", "Unknown"
-                                    ),
-                                    "demo_commands": getattr(
-                                        tool_instance, "demo_commands", []
-                                    ),
-                                    "user_metadata": getattr(
-                                        tool_instance, "user_metadata", {}
-                                    ),
-                                    "require_llm_engine": getattr(
-                                        obj, "require_llm_engine", False
-                                    ),
-                                }
-                                print(
-                                    f"Metadata for {name}: {self.toolbox_metadata[name]}"
-                                )
-                            except Exception as e:
-                                print(f"Error instantiating {name}: {str(e)}")
-                except Exception as e:
-                    print(f"Error loading module {module_name}: {str(e)}")
-
-        print(f"\n==> Total number of tools imported: {len(self.toolbox_metadata)}")
-
-        return self.toolbox_metadata
+        print(f"\n==> Total number of tools imported: {len(tools_metadata)}")
+        return tools_metadata
 
     def run_demo_commands(self) -> List[str]:
         print("\n==> Running demo commands for each tool...")

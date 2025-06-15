@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional
 import os
 from dataclasses import dataclass
-from ..base import BaseTool
+from intentus.tools.base import BaseTool
 
 
 @dataclass

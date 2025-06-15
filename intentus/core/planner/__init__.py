@@ -12,35 +12,25 @@ from ..formatters import QueryAnalysis, NextStep, MemoryVerification
 
 
 class Planner:
-    def __init__(
-        self,
-        llm_engine_name: str,
-        toolbox_metadata: dict = None,
-        available_tools: List = None,
-        verbose: bool = False,
-    ):
-        self.llm_engine_name = llm_engine_name
-        self.llm_engine_mm = create_llm_engine(
-            model_string=llm_engine_name, is_multimodal=True
-        )
-        self.llm_engine = create_llm_engine(
-            model_string=llm_engine_name, is_multimodal=False
-        )
-        self.toolbox_metadata = toolbox_metadata if toolbox_metadata is not None else {}
-        self.available_tools = available_tools if available_tools is not None else []
-        self.verbose = verbose
+    """Planner class for Intentus agent."""
+
+    def __init__(self, llm_engine: Any, config: PlannerConfig):
+        """Initialize the planner."""
+        self.llm_engine = llm_engine
+        self.config = config
+        self.query_analysis = None
+        self.context = None
+        self.subgoal = None
+        self.tool = None
+        self.command = None
+        self.final_output = None
+        self.direct_output = None
 
     def get_image_info(self, image_path: str) -> Dict[str, Any]:
-        image_info = {}
-        if image_path and os.path.isfile(image_path):
-            image_info["image_path"] = image_path
-            try:
-                with Image.open(image_path) as img:
-                    width, height = img.size
-                image_info.update({"width": width, "height": height})
-            except Exception as e:
-                print(f"Error processing image file: {str(e)}")
-        return image_info
+        """Get image information."""
+        if not image_path:
+            return {}
+        return {"image_path": image_path}
 
     def generate_base_response(
         self, question: str, image: str, max_tokens: str = 4000
@@ -56,20 +46,16 @@ class Planner:
             except Exception as e:
                 print(f"Error reading image file: {str(e)}")
 
-        self.base_response = self.llm_engine_mm(input_data, max_tokens=max_tokens)
+        self.base_response = self.llm_engine(input_data, max_tokens=max_tokens)
 
         return self.base_response
 
     async def analyze_query(self, question: str, image: str) -> str:
-        """Analyze the query and determine required tools and steps."""
+        """Analyze the query and determine the required tools and skills."""
         image_info = self.get_image_info(image)
 
-        query_prompt = f"""
+        prompt_analyze_query = f"""
 Task: Analyze the given query with accompanying inputs and determine the skills and tools needed to address it effectively.
-
-Available tools: {self.available_tools}
-
-Metadata for the tools: {self.toolbox_metadata}
 
 Image: {image_info}
 
@@ -79,19 +65,16 @@ Instructions:
 1. Carefully read and understand the query and any accompanying inputs.
 2. Identify the main objectives or tasks within the query.
 3. List the specific skills that would be necessary to address the query comprehensively.
-4. Examine the available tools in the toolbox and determine which ones might relevant and useful for addressing the query. Make sure to consider the user metadata for each tool, including limitations and potential applications (if available).
-5. Provide a brief explanation for each skill and tool you've identified, describing how it would contribute to answering the query.
+4. Provide a brief explanation for each skill you've identified, describing how it would contribute to answering the query.
 
 Your response should include:
 1. A concise summary of the query's main points and objectives, as well as content in any accompanying inputs.
 2. A list of required skills, with a brief explanation for each.
-3. A list of relevant tools from the toolbox, with a brief explanation of how each tool would be utilized and its potential limitations.
-4. Any additional considerations that might be important for addressing the query effectively.
+3. Any additional considerations that might be important for addressing the query effectively.
 
 Please present your analysis in a clear, structured format.
 """
-
-        input_data = [query_prompt]
+        input_data = [prompt_analyze_query]
         if image_info:
             try:
                 with open(image_info["image_path"], "rb") as file:
@@ -100,47 +83,47 @@ Please present your analysis in a clear, structured format.
             except Exception as e:
                 print(f"Error reading image file: {str(e)}")
 
-        self.query_analysis = await self.llm_engine_mm(
-            input_data, response_format=QueryAnalysis
+        response = await self.llm_engine(
+            input_data,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "type": "object",
+                    "properties": {
+                        "concise_summary": {"type": "string"},
+                        "required_skills": {"type": "string"},
+                        "additional_considerations": {"type": "string"},
+                    },
+                    "required": [
+                        "concise_summary",
+                        "required_skills",
+                        "additional_considerations",
+                    ],
+                },
+            },
         )
 
-        return str(self.query_analysis).strip()
+        self.query_analysis = response
+        return str(response).strip()
 
     def extract_context_subgoal_and_tool(self, response: Any) -> Tuple[str, str, str]:
+        """Extract context, subgoal, and tool from the response."""
+        # Parse the response to extract context, subgoal, and tool
+        # This is a simplified version - you might want to make it more robust
+        lines = str(response).split("\n")
+        context = ""
+        subgoal = ""
+        tool = ""
 
-        def normalize_tool_name(tool_name: str) -> str:
-            # Normalize the tool name to match the available tools
-            for tool in self.available_tools:
-                if tool.lower() in tool_name.lower():
-                    return tool
-            return "No matched tool given: " + tool_name
+        for line in lines:
+            if line.startswith("Context:"):
+                context = line.replace("Context:", "").strip()
+            elif line.startswith("Sub-Goal:"):
+                subgoal = line.replace("Sub-Goal:", "").strip()
+            elif line.startswith("Tool:"):
+                tool = line.replace("Tool:", "").strip()
 
-        try:
-            if isinstance(response, NextStep):
-                context = response.context.strip()
-                sub_goal = response.sub_goal.strip()
-                tool_name = response.tool_name.strip()
-            else:
-                text = response.replace("**", "")
-
-                # Pattern to match the exact format
-                pattern = (
-                    r"Context:\s*(.*?)Sub-Goal:\s*(.*?)Tool Name:\s*(.*?)(?=\n\n|\Z)"
-                )
-
-                # Find all matches
-                matches = re.findall(pattern, text, re.DOTALL)
-
-                # Return the last match (most recent/relevant)
-                context, sub_goal, tool_name = matches[-1]
-                context = context.strip()
-                sub_goal = sub_goal.strip()
-            tool_name = normalize_tool_name(tool_name)
-        except Exception as e:
-            print(f"Error extracting context, sub-goal, and tool name: {str(e)}")
-            return None, None, None
-
-        return context, sub_goal, tool_name
+        return context, subgoal, tool
 
     def generate_next_step(
         self,
@@ -160,10 +143,10 @@ Image: {image}
 Query Analysis: {query_analysis}
 
 Available Tools:
-{self.available_tools}
+{self.toolbox.tools}
 
 Tool Metadata:
-{self.toolbox_metadata}
+{self.toolbox.metadata}
 
 Previous Steps and Their Results:
 {memory.get_actions()}
@@ -208,7 +191,7 @@ Rules:
 - Select only ONE tool for this step.
 - The sub-goal MUST directly address the query and be achievable by the selected tool.
 - The Context section MUST include ALL necessary information for the tool to function, including ALL relevant file paths, data, and variables from previous steps.
-- The tool name MUST exactly match one from the available tools list: {self.available_tools}.
+- The tool name MUST exactly match one from the available tools list: {self.toolbox.tools}.
 - Avoid redundancy by considering previous steps and building on prior results.
 - Your response MUST conclude with the Context, Sub-Goal, and Tool Name sections IN THIS ORDER, presented ONLY ONCE.
 - Include NO content after these three sections.
@@ -235,8 +218,8 @@ Task: Thoroughly evaluate the completeness and accuracy of the memory for fulfil
 Context:
 Query: {question}
 Image: {image_info}
-Available Tools: {self.available_tools}
-Toolbox Metadata: {self.toolbox_metadata}
+Available Tools: {self.toolbox.tools}
+Toolbox Metadata: {self.toolbox.metadata}
 Initial Analysis: {query_analysis}
 Memory (tools used and results): {memory.get_actions()}
 
@@ -300,7 +283,7 @@ IMPORTANT: Your response MUST end with either 'Conclusion: STOP' or 'Conclusion:
             except Exception as e:
                 print(f"Error reading image file: {str(e)}")
 
-        stop_verification = self.llm_engine_mm(
+        stop_verification = self.llm_engine(
             input_data, response_format=MemoryVerification
         )
 
@@ -378,27 +361,37 @@ Please provide your final output in a clear, structured format.
             except Exception as e:
                 print(f"Error reading image file: {str(e)}")
 
-        final_output = await self.llm_engine_mm(input_data)
+        final_output = await self.llm_engine(input_data)
         return str(final_output).strip()
 
     def generate_direct_output(self, question: str, image: str, memory: Memory) -> str:
+        """Generate a direct output without using tools."""
         image_info = self.get_image_info(image)
 
-        prompt_generate_final_output = f"""
-Context:
+        prompt_direct_output = f"""
+Task: Generate a direct response to the query without using any tools.
+
 Query: {question}
 Image: {image_info}
-Initial Analysis:
-{self.query_analysis}
-Actions Taken:
+
+Previous Steps and Their Results:
 {memory.get_actions()}
 
-Please generate the concise output based on the query, image information, initial analysis, and actions taken. Break down the process into clear, logical, and conherent steps. Conclude with a precise and direct answer to the query.
+Instructions:
+1. Review the original query and any accompanying inputs.
+2. Generate a direct response based on your knowledge.
+3. Ensure the response is clear and directly addresses the query.
+4. Include relevant details and explanations where necessary.
 
-Answer:
+Your response should:
+1. Be clear and concise
+2. Directly answer the query
+3. Be well-structured and easy to understand
+
+Please provide your response in a clear, structured format.
 """
 
-        input_data = [prompt_generate_final_output]
+        input_data = [prompt_direct_output]
         if image_info:
             try:
                 with open(image_info["image_path"], "rb") as file:
@@ -407,6 +400,5 @@ Answer:
             except Exception as e:
                 print(f"Error reading image file: {str(e)}")
 
-        final_output = self.llm_engine_mm(input_data)
-
+        final_output = self.llm_engine(input_data)
         return final_output
