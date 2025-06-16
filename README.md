@@ -82,6 +82,3 @@ This will:
 3. Save detailed logs to `example.log`
 4. Save task results to JSON files in `example_outputs/`
 
-## License
-
-MIT License
