@@ -12,7 +12,7 @@ setup(
     packages=find_packages(),
     install_requires=read_requirements("requirements.txt"),
     author="Haohan Wang",
-    author_email="your.email@example.com",
+    author_email="haohanw@eecs.berkeley.edu",
     description="An SDK for robotics interaction with audio and video processing capabilities",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
