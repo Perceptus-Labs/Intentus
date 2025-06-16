@@ -16,7 +16,7 @@ setup(
     description="An SDK for robotics interaction with audio and video processing capabilities",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/intentus",
+    url="https://github.com/Perceptus-Labs/Intentus",
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
