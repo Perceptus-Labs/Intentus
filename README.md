@@ -1,55 +1,134 @@
-# Intentus
+# ![PerceptusLabs Logo](https://github.com/Perceptus-Labs/Intentus/blob/main/assets/logo.png?raw=true) Intentus
 
-An SDK for robotics interaction with audio and video processing capabilities.
+**Define the next generation of human-robot interaction.**
+**Built by [PerceptusLabs](https://perceptuslabs.com)**
 
-## Installation
+Intentus is a **scalable, self-learning orchestration server** that brings audio-visual intelligence to robots and autonomous agents. With memory, modular tools, and a structured planning system, it can perceive, reason, and act—adapting intelligently with each interaction.
+
+> “The future isn’t just about robots that respond — it’s about robots that understand, plan, and grow.”
+
+---
+
+## ✨ Key Capabilities
+
+* **Vision-Language-Action (VLA) Pipeline**
+  Send structured text representations of audio/visual input; Intentus interprets, plans, executes, and adapts.
+
+* **Web-Enabled Agent**
+  Includes a web-browsing toolchain for open-ended question answering, research, or data retrieval.
+
+* **Tool-Expandable**
+  Add custom robot skills via natural language in under 100 lines. Tools live in `/tools` and can be hot-loaded.
+
+* **Memory-Backed Planning**
+  Multi-step agents with persistent memory and feedback-driven self-improvement.
+
+* **Production-Ready**
+  API-based architecture, secure with API key support, logging, and environment configuration.
+
+* **Asynchronous & Scalable**
+  Modern Python backend, fast async processing, with customizable agent parameters and execution lifecycles.
+
+---
+
+## 📦 Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/Perceptus-Labs/Intentus.git
 cd intentus
-
-# Create and activate a virtual environment (recommended)
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install the package in development mode
+source venv/bin/activate
 pip install -e .
 ```
 
-## Usage
+---
 
-# Intentus Orchestrator API
+## 🚀 Quickstart: Local Demo
 
-This orchestrator API receives intention results from your Go application and processes them using the Intentus agent.
+```bash
+python intentus/examples/agent_demo.py
+```
 
-## Setup
+**Demo Task:** “What is the capital of France?”
 
-1. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+You’ll see:
 
-2. **Set environment variables:**
-   ```bash
-   export ORCHESTRATOR_API_KEY="your-secret-api-key"
-   export ORCHESTRATOR_HOST="0.0.0.0"  # Optional, defaults to 0.0.0.0
-   export ORCHESTRATOR_PORT="8000"     # Optional, defaults to 8000
-   ```
+* Multi-step reasoning
+* Query analysis
+* Final output
+* Agent memory dump
+* Execution time and path
 
-3. **Run the orchestrator:**
-   ```bash
-   python main.py
-   ```
+> 💡 See real-time agent logs in `example.log`, outputs saved to `example_outputs/`.
 
-The server will start on `http://localhost:8000` (or your configured host/port).
+---
 
-## API Endpoints
+## 🧠 How It Works
 
-### POST /orchestrate
-Main endpoint that receives intention results and processes them with the Intentus agent.
+1. **Your robot/system sends a structured intention**
+   (transcribed speech, vision cues, context, etc.)
+2. **Intentus parses & analyzes** the command with optional tools
+3. **It plans actions, reasons over them**, and executes tools
+4. **Feedback updates its memory**, and it continues iterating
+5. **Returns a full report** on results, reasoning, and future suggestions
 
-**Request Body:**
+---
+
+## 🛠️ Add Your Own Tools (VLA Plugins)
+
+Developers can extend robot abilities via **natural language definitions** and lightweight Python handlers:
+
+```bash
+# Create a new tool file in intentus/tools/
+# Describe your tool's purpose in plain English
+# Add a function with input/output contracts
+```
+
+Your robot can learn to:
+
+* Navigate new terrain
+* Run factory checks
+* Diagnose mechanical issues
+* Interface with APIs or microcontrollers
+
+> 🔧 Tool architecture is fully modular and scalable.
+
+---
+
+## 🧪 Run the API Server (Orchestrator)
+
+The orchestrator receives intention payloads from your robot/Go backend:
+
+### 1. Install requirements
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Set environment variables (either in .env or directly in the code)
+
+```bash
+export ORCHESTRATOR_API_KEY="your-api-key"
+export ORCHESTRATOR_HOST="0.0.0.0"
+export ORCHESTRATOR_PORT="8000"
+```
+
+### 3. Run the server
+
+```bash
+python main.py
+```
+
+> Now available at: `http://localhost:8000`
+
+---
+
+## 🔍 API Reference
+
+### `POST /orchestrate`
+
+Receives a structured intention payload:
+
 ```json
 {
   "session_id": "session-123",
@@ -62,134 +141,92 @@ Main endpoint that receives intention results and processes them with the Intent
 }
 ```
 
-**Headers:**
-```
-Content-Type: application/json
-Authorization: Bearer your-secret-api-key
-```
+Returns:
 
-**Response:**
 ```json
 {
   "success": true,
-  "query_analysis": "Analysis of the query...",
-  "base_response": "Base response from agent...",
-  "final_output": "Final processed output...",
+  "query_analysis": "...",
+  "base_response": "...",
+  "final_output": "...",
   "execution_time": 2.5,
   "steps_taken": 3,
   "memory": ["Step 1: ...", "Step 2: ..."]
 }
 ```
 
-### GET /health
-Health check endpoint.
+Authentication:
+`Authorization: Bearer your-api-key`
 
-### GET /
-Root endpoint with API information.
+---
 
-## Testing
+## 🔍 Example Use Case
 
-Run the test script to verify everything works:
+Imagine a robot assistant in a kitchen:
+
+1. Sees an image of spilled flour (visual cue)
+2. Hears “What do I do now?” (audio command)
+3. Intentus processes the environment:
+
+   * Identifies the spill
+   * Suggests cleanup plan
+   * Executes cleaning tool
+   * Stores feedback if plan failed/succeeded
+
+This is **closed-loop intention orchestration** — and it’s just the beginning.
+
+---
+
+## 🧰 Developer Configuration
+
+Customize the agent in `main.py > get_agent()`:
+
+```python
+AgentConfig(
+    llm_engine="gpt-4.1-mini",
+    enabled_tools=["Wikipedia_Knowledge_Searcher_Tool"],
+    verbose=True,
+    max_steps=5,
+    temperature=0.7,
+)
+```
+
+---
+
+## ✅ Testing
 
 ```bash
 python test_orchestrator.py
 ```
 
-Make sure to update the `API_KEY` in `test_orchestrator.py` to match your `ORCHESTRATOR_API_KEY`.
+Make sure `API_KEY` in the test script matches your environment variable.
 
-## Integration with Go Application
+---
 
-Your Go application should send requests to the `/orchestrate` endpoint with the same payload structure as shown in the request body example above.
+## 🔐 Security
 
-The orchestrator will:
-1. Receive the intention result
-2. Format it into a context string for the agent
-3. Run the Intentus agent with the formatted context
-4. Return the agent's response
+* `/orchestrate` is protected by an API key
+* Set `ORCHESTRATOR_API_KEY`
+* Authentication is optional but **highly recommended**
 
-## Configuration
+---
 
-The agent configuration is set in the `get_agent()` function in `main.py`. You can modify:
-- `llm_engine`: The LLM engine to use
-- `enabled_tools`: List of tools to enable
-- `max_steps`: Maximum steps for the agent
-- `temperature`: Temperature for LLM responses
+## 📈 For Investors & Partners
 
-## Logging
+Intentus is a foundational system in **robot cognition**:
 
-The orchestrator uses the same logging setup as the Intentus agent. Logs will show:
-- Incoming requests
-- Agent execution details
-- Errors and exceptions
+* It’s **tool-agnostic** and can support a fleet of heterogeneous robots
+* It bridges **perception, language, and control**
+* It allows **natural language tool creation** — no low-level firmware work required
+* It logs full **memory and reasoning chains**, giving you total auditability
+* It is **modular, API-first, and cloud-compatible**
 
-## Security
+Let’s redefine how robots understand and respond to the world.
 
-- API key authentication is required for the `/orchestrate` endpoint
-- Set `ORCHESTRATOR_API_KEY` environment variable
-- If not set, authentication is skipped (not recommended for production) 
+---
 
-## Local Agent Demo
+## 👥 About PerceptusLabs
 
-Here's a basic example of how to use Intentus from the example script in the `intentus/examples` directory:
+We are building the future of robotic cognition — creating agents that not only follow instructions, but **think, adapt, and evolve**.
 
-```python
-import asyncio
-from intentus.core.utils import setup_logging
-from intentus.core.agent import AgentConfig, IntentusAgent
-
-
-async def main():
-    # Set up logging
-    setup_logging()
-
-    # Create agent configuration
-    config = AgentConfig(
-        llm_engine="gpt-4.1-mini",
-        enabled_tools=["Wikipedia_Knowledge_Searcher_Tool"],
-        verbose=True,
-        max_steps=5,
-        temperature=0.7,
-    )
-
-    # Create agent
-    agent = IntentusAgent(config)
-
-    # Run agent
-    result = await agent.run(question="What is the capital of France?", image=None)
-
-    # Print results
-    print("\nQuery Analysis:")
-    print(result["query_analysis"])
-    print("\nBase Response:")
-    print(result["base_response"])
-    print("\nFinal Output:")
-    print(result["final_output"])
-    print("\nExecution Time:", result["execution_time"])
-    print("Steps Taken:", result["steps_taken"])
-    print("\nMemory:")
-    for action in result["memory"]:
-        print(f"- {action}")
-```
-
-## Features
-
-- Asynchronous execution
-- Comprehensive logging
-- Tool-based architecture
-- Context-aware processing
-- Configurable components
-
-## Development
-
-To run the example:
-
-```bash
-python intentus/examples/agent_demo.py
-```
-
-This will:
-1. Create a new agent with the specified configuration
-2. Run multiple example tasks
-3. Save detailed logs to `example.log`
-4. Save task results to JSON files in `example_outputs/`
-
+Visit [perceptuslabs.ai](https://perceptuslabs.ai) for more.
