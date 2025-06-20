@@ -1,4 +1,4 @@
-# ![PerceptusLabs Logo](https://github.com/Perceptus-Labs/Intentus/blob/main/assets/logo.png?raw=true) Intentus
+# ![PerceptusLabs Logo](https://github.com/Perceptus-Labs/Intentus/blob/main/public/logo.png?raw=true) Intentus
 
 **Define the next generation of human-robot interaction.**
 **Built by [PerceptusLabs](https://perceptuslabs.com)**
