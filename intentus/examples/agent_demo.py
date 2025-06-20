@@ -1,6 +1,7 @@
 import asyncio
 from intentus.core.utils import setup_logging
 from intentus.core.agent import AgentConfig, IntentusAgent
+import logging
 
 
 async def main():
@@ -20,7 +21,7 @@ async def main():
     agent = IntentusAgent(config)
 
     # Run agent
-    result = await agent.run(question="What is the capital of France?", image=None)
+    result = await agent.run(question="What is the capital of France?", image="")
 
     # Print results
     print("\nQuery Analysis:")
