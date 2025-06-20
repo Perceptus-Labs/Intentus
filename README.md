@@ -1,4 +1,4 @@
-# ![PerceptusLabs Logo](https://github.com/Perceptus-Labs/Intentus/blob/main/public/logo.png?raw=true) Intentus
+# ![PerceptusLabs Logo](https://github.com/Perceptus-Labs/Intentus/blob/main/public/logo.png?raw=true) Intentus - Omni Robotic Orchestrator
 
 **Define the next generation of human-robot interaction.**
 **Built by [PerceptusLabs](https://perceptuslabs.com)**
