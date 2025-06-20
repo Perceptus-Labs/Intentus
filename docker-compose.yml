@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  intentus-orchestrator:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ORCHESTRATOR_API_KEY=${ORCHESTRATOR_API_KEY:-your-secret-api-key}
+      - ORCHESTRATOR_HOST=0.0.0.0
+      - ORCHESTRATOR_PORT=8000
+    volumes:
+      # Optional: Mount cache directories for persistence
+      - ./cache:/app/cache
+      - ./agent_cache:/app/agent_cache
+      - ./agent_memory:/app/agent_memory
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s 
