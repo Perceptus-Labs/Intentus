@@ -35,7 +35,6 @@ Intentus is a **scalable, self-learning orchestration server** that brings audio
 
 ```bash
 git clone https://github.com/Perceptus-Labs/Intentus.git
-cd intentus
 python -m venv venv
 source venv/bin/activate
 pip install -e .
