@@ -229,4 +229,4 @@ Let’s redefine how robots understand and respond to the world.
 
 We are building the future of robotic cognition — creating agents that not only follow instructions, but **think, adapt, and evolve**.
 
-Visit [perceptuslabs.ai](https://perceptuslabs.ai) for more.
+Visit [perceptuslabs.com](https://perceptuslabs.com) for more.
